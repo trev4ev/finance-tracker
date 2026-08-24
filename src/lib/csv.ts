@@ -1,5 +1,6 @@
-import type { FinanceState, Transaction, TransactionType } from "./types";
 import { lookup } from "./finance";
+import { normalizeTransaction } from "./normalize";
+import type { FinanceState, Transaction, TransactionType } from "./types";
 
 function escapeCsv(value: string): string {
   if (/[",\n]/.test(value)) return `"${value.replaceAll('"', '""')}"`;
@@ -65,17 +66,19 @@ export function parseTransactionsCsv(
     if (!["income", "expense", "transfer"].includes(type)) continue;
     const accountId = accountByName.get(accountName ?? "");
     if (!accountId) continue;
-    imported.push({
-      id: crypto.randomUUID(),
-      date,
-      description,
-      amount: Math.round(amount * 100) / 100,
-      type,
-      accountId,
-      categoryId: categoryByName.get(categoryName ?? "") ?? null,
-      toAccountId: accountByName.get(toAccountName ?? "") ?? null,
-      notes,
-    });
+    imported.push(
+      normalizeTransaction({
+        id: crypto.randomUUID(),
+        date,
+        description,
+        amount: Math.round(amount * 100) / 100,
+        type,
+        accountId,
+        categoryId: categoryByName.get(categoryName ?? "") ?? null,
+        toAccountId: accountByName.get(toAccountName ?? "") ?? null,
+        notes,
+      }),
+    );
   }
   return imported;
 }

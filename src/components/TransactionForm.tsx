@@ -3,7 +3,12 @@
 import { useState } from "react";
 import { parseAmount } from "@/lib/money";
 import { todayISO } from "@/lib/dates";
-import type { FinanceState, Transaction, TransactionType } from "@/lib/types";
+import type {
+  FinanceState,
+  Transaction,
+  TransactionInput,
+  TransactionType,
+} from "@/lib/types";
 
 const emptyForm = {
   date: todayISO(),
@@ -24,7 +29,7 @@ export function TransactionForm({
 }: {
   state: FinanceState;
   initial?: Transaction;
-  onSubmit: (tx: Omit<Transaction, "id"> & { id?: string }) => void;
+  onSubmit: (tx: TransactionInput) => void;
   onCancel: () => void;
 }) {
   const [form, setForm] = useState(() =>

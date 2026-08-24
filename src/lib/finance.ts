@@ -10,6 +10,9 @@ export function accountBalance(
   account: Account,
   transactions: Transaction[],
 ): number {
+  if (account.source === "plaid" && account.currentBalance != null) {
+    return account.currentBalance;
+  }
   let balance = account.startingBalance;
   for (const tx of transactions) {
     if (tx.type === "income" && tx.accountId === account.id) {

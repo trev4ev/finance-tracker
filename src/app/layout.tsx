@@ -16,10 +16,14 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Ledger — Personal finance tracker",
   description:
-    "Track accounts, transactions, and budgets in a private, local-first finance app.",
+    "Track accounts, transactions, and budgets. Sync to Supabase and link banks with Plaid.",
 };
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html
       lang="en"

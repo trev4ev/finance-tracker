@@ -1,7 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { parseTransactionsCsv, transactionsToCsv } from "@/lib/csv";
+import { createClient } from "@/lib/supabase/client";
 import { useFinance } from "@/lib/store";
 
 export default function SettingsPage() {
@@ -13,6 +15,8 @@ export default function SettingsPage() {
     importTransactions,
     loadDemo,
     resetAll,
+    user,
+    cloudEnabled,
   } = useFinance();
   const fileRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
@@ -38,9 +42,45 @@ export default function SettingsPage() {
       <header>
         <h2 className="text-2xl font-semibold tracking-tight">Settings</h2>
         <p className="text-sm text-muted">
-          Data stays in this browser. Export a CSV before clearing the device.
+          {cloudEnabled
+            ? user
+              ? "Signed in. Transactions and balances sync to Supabase."
+              : "Sign in to store data in Supabase and link banks with Plaid."
+            : "Without Supabase keys, data stays in this browser."}
         </p>
       </header>
+
+      <section className="rounded-2xl border border-border bg-surface p-5">
+        <h3 className="mb-2 font-medium">Cloud account</h3>
+        {cloudEnabled ? (
+          user ? (
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-muted">{user.email}</p>
+              <button
+                type="button"
+                className="rounded-xl border border-border px-4 py-2 text-sm hover:bg-surface-2"
+                onClick={async () => {
+                  await createClient().auth.signOut();
+                }}
+              >
+                Sign out
+              </button>
+            </div>
+          ) : (
+            <Link
+              href="/login"
+              className="inline-flex rounded-xl bg-accent px-4 py-2 text-sm font-medium text-background"
+            >
+              Sign in
+            </Link>
+          )
+        ) : (
+          <p className="text-sm text-muted">
+            Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+            to enable cloud sync.
+          </p>
+        )}
+      </section>
 
       <section className="rounded-2xl border border-border bg-surface p-5">
         <h3 className="mb-4 font-medium">Categories</h3>
