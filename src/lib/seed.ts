@@ -1,5 +1,6 @@
 import { currentMonth, daysInMonth, lastNMonths } from "./dates";
-import type { FinanceState, Transaction } from "./types";
+import { normalizeState } from "./normalize";
+import type { FinanceState, TransactionInput } from "./types";
 
 function mulberry32(seed: number) {
   return () => {
@@ -102,7 +103,7 @@ export function createDemoState(): FinanceState {
 
   const rand = mulberry32(20260824);
   const months = lastNMonths(4);
-  const transactions: Transaction[] = [];
+  const transactions: Array<TransactionInput & { id: string }> = [];
   let txn = 0;
   const id = () => `tx-${++txn}`;
 
@@ -334,11 +335,11 @@ export function createDemoState(): FinanceState {
     { id: "bud-shop", categoryId: "cat-shopping", month, amount: 200 },
   ];
 
-  return { accounts, categories, transactions, budgets };
+  return normalizeState({ accounts, categories, transactions, budgets });
 }
 
 export function emptyState(): FinanceState {
-  return {
+  return normalizeState({
     accounts: [],
     categories: [
       { id: crypto.randomUUID(), name: "Salary", kind: "income", color: "#34d399" },
@@ -348,5 +349,5 @@ export function emptyState(): FinanceState {
     ],
     transactions: [],
     budgets: [],
-  };
+  });
 }

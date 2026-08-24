@@ -103,11 +103,19 @@ export default function TransactionsPage() {
                     {formatDisplayDate(tx.date)}
                   </td>
                   <td className="px-4 py-3">
-                    <p className="font-medium">{tx.description}</p>
+                    <p className="font-medium">
+                      {tx.description}
+                      {tx.pending ? (
+                        <span className="ml-2 text-[10px] font-normal tracking-wide text-muted uppercase">
+                          pending
+                        </span>
+                      ) : null}
+                    </p>
                     <p className="text-xs text-muted">
                       {tx.type === "transfer"
                         ? `${account?.name ?? "Account"} → ${toAccount?.name ?? "Account"}`
                         : category?.name ?? "Uncategorized"}
+                      {tx.source === "plaid" ? " · Plaid" : ""}
                     </p>
                   </td>
                   <td className="hidden px-4 py-3 text-muted sm:table-cell">
@@ -150,7 +158,7 @@ export default function TransactionsPage() {
             onCancel={() => setEditing(null)}
             onSubmit={(tx) => {
               if (editing === "new") addTransaction(tx);
-              else updateTransaction({ ...tx, id: editing.id });
+              else updateTransaction({ ...editing, ...tx, id: editing.id });
               setEditing(null);
             }}
           />

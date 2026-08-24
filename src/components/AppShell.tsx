@@ -9,6 +9,7 @@ import {
   Settings,
   Wallet,
 } from "lucide-react";
+import { useFinance } from "@/lib/store";
 
 const links = [
   { href: "/", label: "Overview", icon: LayoutDashboard },
@@ -20,6 +21,13 @@ const links = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const { user, cloudEnabled, error } = useFinance();
+
+  if (pathname === "/login") {
+    return (
+      <div className="min-h-full bg-background text-foreground">{children}</div>
+    );
+  }
 
   return (
     <div className="min-h-full bg-background text-foreground">
@@ -53,10 +61,33 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
+        <div className="absolute inset-x-4 bottom-6">
+          {cloudEnabled ? (
+            user ? (
+              <p className="truncate px-2 text-xs text-muted">{user.email}</p>
+            ) : (
+              <Link
+                href="/login"
+                className="block rounded-xl px-3 py-2 text-sm text-accent hover:bg-surface-2"
+              >
+                Sign in for cloud sync
+              </Link>
+            )
+          ) : (
+            <p className="px-2 text-xs text-muted">Local-only mode</p>
+          )}
+        </div>
       </aside>
 
       <main className="pb-24 lg:ml-60 lg:pb-10">
-        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">{children}</div>
+        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+          {error ? (
+            <p className="mb-4 rounded-xl border border-expense/30 bg-expense/10 px-3 py-2 text-sm text-expense">
+              {error}
+            </p>
+          ) : null}
+          {children}
+        </div>
       </main>
 
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface/95 backdrop-blur lg:hidden">

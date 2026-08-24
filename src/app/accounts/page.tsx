@@ -1,15 +1,28 @@
 "use client";
 
 import { useState } from "react";
-import { Plus } from "lucide-react";
+import Link from "next/link";
+import { Plus, RefreshCw } from "lucide-react";
 import { Modal } from "@/components/Modal";
+import { PlaidLinkButton } from "@/components/PlaidLinkButton";
 import { ACCOUNT_TYPES, type Account } from "@/lib/types";
 import { accountBalance } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { useFinance } from "@/lib/store";
 
 export default function AccountsPage() {
-  const { state, hydrated, addAccount, updateAccount, deleteAccount } = useFinance();
+  const {
+    state,
+    hydrated,
+    addAccount,
+    updateAccount,
+    deleteAccount,
+    user,
+    cloudEnabled,
+    syncing,
+    refresh,
+    syncPlaid,
+  } = useFinance();
   const [editing, setEditing] = useState<Account | "new" | null>(null);
 
   if (!hydrated) {
@@ -25,6 +38,7 @@ export default function AccountsPage() {
             Starting balances plus every income, expense, and transfer.
           </p>
         </div>
+        <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => setEditing("new")}
@@ -33,6 +47,30 @@ export default function AccountsPage() {
           <Plus size={16} />
           Add account
         </button>
+        {cloudEnabled && user ? (
+          <>
+            <PlaidLinkButton onLinked={() => refresh()} />
+            {state.plaidItems.length > 0 ? (
+              <button
+                type="button"
+                disabled={syncing}
+                onClick={() => void syncPlaid()}
+                className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm hover:bg-surface-2 disabled:opacity-50"
+              >
+                <RefreshCw size={16} />
+                {syncing ? "Syncing…" : "Sync banks"}
+              </button>
+            ) : null}
+          </>
+        ) : cloudEnabled ? (
+          <Link
+            href="/login"
+            className="rounded-xl border border-border px-3 py-2 text-sm hover:bg-surface-2"
+          >
+            Sign in to link a bank
+          </Link>
+        ) : null}
+        </div>
       </header>
 
       <div className="grid gap-3 sm:grid-cols-2">
@@ -47,8 +85,16 @@ export default function AccountsPage() {
             >
               <p className="text-xs tracking-wide text-muted uppercase">
                 {account.type}
+                {account.source === "plaid" ? " · linked" : ""}
               </p>
               <h3 className="mt-1 text-lg font-medium">{account.name}</h3>
+              {account.institutionName || account.mask ? (
+                <p className="text-xs text-muted">
+                  {[account.institutionName, account.mask ? `•••• ${account.mask}` : null]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              ) : null}
               <p
                 className={`mt-4 font-mono text-2xl ${
                   balance < 0 ? "text-expense" : "text-foreground"
@@ -72,7 +118,7 @@ export default function AccountsPage() {
           onClose={() => setEditing(null)}
           onSave={(account) => {
             if (editing === "new") addAccount(account);
-            else updateAccount({ ...account, id: editing.id });
+            else updateAccount({ ...editing, ...account });
             setEditing(null);
           }}
           onDelete={
@@ -97,7 +143,7 @@ function AccountModal({
 }: {
   initial?: Account;
   onClose: () => void;
-  onSave: (account: Omit<Account, "id">) => void;
+  onSave: (account: Pick<Account, "name" | "type" | "startingBalance">) => void;
   onDelete?: () => void;
 }) {
   const [name, setName] = useState(initial?.name ?? "");
@@ -153,6 +199,12 @@ function AccountModal({
             ))}
           </select>
         </label>
+        {initial?.source === "plaid" ? (
+          <p className="text-sm text-muted">
+            This account is linked through Plaid. Balance comes from the bank;
+            renaming it here does not change the institution.
+          </p>
+        ) : (
         <label className="block text-sm">
           <span className="mb-1 block text-muted">
             Starting balance {type === "credit" ? "(negative if you owe)" : ""}
@@ -163,6 +215,7 @@ function AccountModal({
             className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 font-mono outline-none focus:border-accent"
           />
         </label>
+        )}
         {error ? <p className="text-sm text-expense">{error}</p> : null}
         <div className="flex justify-end gap-2">
           <button
