@@ -222,3 +222,8 @@ grant all on table public.accounts to authenticated;
 grant all on table public.account_balances to authenticated;
 grant all on table public.transactions to authenticated;
 grant all on table public.budgets to authenticated;
+
+alter function public.set_updated_at() set search_path = public;
+
+revoke all on function public.handle_new_user() from public, anon, authenticated;
+grant execute on function public.handle_new_user() to postgres, supabase_auth_admin;
