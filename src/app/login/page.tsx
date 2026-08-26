@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { invokeFunction } from "@/lib/functions";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 
@@ -32,17 +33,10 @@ export default function LoginPage() {
     const supabase = createClient();
     try {
       if (mode === "signup") {
-        const response = await fetch("/api/auth/account", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email, password }),
+        await invokeFunction<{ ok?: boolean }>("password-account", {
+          email,
+          password,
         });
-        const payload = (await response.json().catch(() => ({}))) as {
-          error?: string;
-        };
-        if (!response.ok) {
-          throw new Error(payload.error ?? "Could not create account");
-        }
       }
 
       const { error: signError } = await supabase.auth.signInWithPassword({
@@ -51,7 +45,6 @@ export default function LoginPage() {
       });
       if (signError) throw signError;
       router.push("/");
-      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Authentication failed");
     } finally {

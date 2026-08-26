@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { usePlaidLink } from "react-plaid-link";
 import { Landmark } from "lucide-react";
+import { invokeFunction } from "@/lib/functions";
 
 export function PlaidLinkButton({
   disabled,
@@ -29,16 +30,11 @@ export function PlaidLinkButton({
       setBusy(true);
       setError("");
       try {
-        const response = await fetch("/api/plaid/exchange", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            public_token: publicToken,
-            institution: metadata.institution,
-          }),
+        await invokeFunction("plaid", {
+          action: "exchange",
+          public_token: publicToken,
+          institution: metadata.institution,
         });
-        const payload = (await response.json()) as { error?: string };
-        if (!response.ok) throw new Error(payload.error || "Could not link bank");
         await onLinked();
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not link bank");
@@ -69,15 +65,11 @@ export function PlaidLinkButton({
     setBusy(true);
     setError("");
     try {
-      const response = await fetch("/api/plaid/create-link-token", {
-        method: "POST",
+      const payload = await invokeFunction<{ link_token?: string }>("plaid", {
+        action: "link-token",
       });
-      const payload = (await response.json()) as {
-        link_token?: string;
-        error?: string;
-      };
-      if (!response.ok || !payload.link_token) {
-        throw new Error(payload.error || "Could not start Plaid Link");
+      if (!payload.link_token) {
+        throw new Error("Could not start Plaid Link");
       }
       setToken(payload.link_token);
     } catch (err) {

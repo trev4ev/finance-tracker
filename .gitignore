@@ -34,6 +34,9 @@ yarn-error.log*
 .env*
 !.env.example
 
+# static export
+/out
+
 # vercel
 .vercel
 

@@ -23,37 +23,56 @@ function numOrNull(
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function isJwtClockError(error: { code?: string; message?: string } | null) {
+  if (!error) return false;
+  return (
+    error.code === "PGRST303" ||
+    (error.message ?? "").toLowerCase().includes("jwt issued at future")
+  );
+}
+
+async function sleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function loadFinanceState(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<FinanceState> {
-  const [accounts, categories, transactions, budgets, plaidItems] =
-    await Promise.all([
-      supabase.from("accounts").select("*").eq("user_id", userId),
-      supabase.from("categories").select("*").eq("user_id", userId),
-      supabase.from("transactions").select("*").eq("user_id", userId),
-      supabase.from("budgets").select("*").eq("user_id", userId),
-      supabase
-        .from("plaid_items")
-        .select("id, institution_name, status, last_synced_at")
-        .eq("user_id", userId),
-    ]);
+  let lastError: { code?: string; message?: string } | null = null;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (attempt > 0) await sleep(800 * attempt);
+    const [accounts, categories, transactions, budgets, plaidItems] =
+      await Promise.all([
+        supabase.from("accounts").select("*").eq("user_id", userId),
+        supabase.from("categories").select("*").eq("user_id", userId),
+        supabase.from("transactions").select("*").eq("user_id", userId),
+        supabase.from("budgets").select("*").eq("user_id", userId),
+        supabase
+          .from("plaid_items")
+          .select("id, institution_name, status, last_synced_at")
+          .eq("user_id", userId),
+      ]);
 
-  const error =
-    accounts.error ||
-    categories.error ||
-    transactions.error ||
-    budgets.error ||
-    plaidItems.error;
-  if (error) throw error;
-
-  return normalizeState({
-    accounts: (accounts.data ?? []).map(accountFromRow),
-    categories: (categories.data ?? []).map(categoryFromRow),
-    transactions: (transactions.data ?? []).map(transactionFromRow),
-    budgets: (budgets.data ?? []).map(budgetFromRow),
-    plaidItems: (plaidItems.data ?? []).map(plaidItemFromRow),
-  });
+    const error =
+      accounts.error ||
+      categories.error ||
+      transactions.error ||
+      budgets.error ||
+      plaidItems.error;
+    if (!error) {
+      return normalizeState({
+        accounts: (accounts.data ?? []).map(accountFromRow),
+        categories: (categories.data ?? []).map(categoryFromRow),
+        transactions: (transactions.data ?? []).map(transactionFromRow),
+        budgets: (budgets.data ?? []).map(budgetFromRow),
+        plaidItems: (plaidItems.data ?? []).map(plaidItemFromRow),
+      });
+    }
+    lastError = error;
+    if (!isJwtClockError(error)) break;
+  }
+  throw new Error(lastError?.message ?? "Could not load cloud data");
 }
 
 export async function replaceFinanceState(

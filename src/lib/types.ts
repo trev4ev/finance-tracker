@@ -61,7 +61,6 @@ export type TransactionInput = Pick<
   | "date"
   | "description"
   | "amount"
-  | "originalAmount"
   | "type"
   | "accountId"
   | "categoryId"

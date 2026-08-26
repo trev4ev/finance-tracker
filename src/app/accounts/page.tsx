@@ -214,8 +214,8 @@ function AccountModal({
         </div>
         {initial?.source === "plaid" ? (
           <p className="text-sm text-muted">
-            This account is linked through Plaid. Balance comes from the bank;
-            renaming it here does not change the institution.
+            This account is linked through Plaid. Balance comes from the bank.
+            Your name here is kept across syncs; it does not change the institution.
             {initial.lastSyncedAt
               ? ` Last synced ${formatRelativeTimestamp(initial.lastSyncedAt)}.`
               : " Not synced yet."}

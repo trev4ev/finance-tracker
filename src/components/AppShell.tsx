@@ -23,7 +23,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, cloudEnabled, error } = useFinance();
 
-  if (pathname === "/login") {
+  const path = pathname.replace(/\/$/, "") || "/";
+  if (path === "/login" || path === "/auth/callback") {
     return (
       <div className="min-h-full bg-background text-foreground">{children}</div>
     );
@@ -42,8 +43,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {links.map((link) => {
             const active =
               link.href === "/"
-                ? pathname === "/"
-                : pathname.startsWith(link.href);
+                ? path === "/"
+                : path.startsWith(link.href);
             const Icon = link.icon;
             return (
               <Link
@@ -95,8 +96,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {links.map((link) => {
             const active =
               link.href === "/"
-                ? pathname === "/"
-                : pathname.startsWith(link.href);
+                ? path === "/"
+                : path.startsWith(link.href);
             const Icon = link.icon;
             return (
               <Link
