@@ -50,6 +50,7 @@ export function TransactionForm({
         },
   );
   const [error, setError] = useState("");
+  const [showNotes, setShowNotes] = useState(() => Boolean(initial?.notes));
 
   const categories = state.categories.filter((category) =>
     form.type === "income"
@@ -209,17 +210,27 @@ export function TransactionForm({
         </label>
       )}
 
-      <label className="block text-sm">
-        <span className="mb-1 block text-muted">Notes</span>
-        <textarea
-          value={form.notes}
-          onChange={(event) =>
-            setForm((prev) => ({ ...prev, notes: event.target.value }))
-          }
-          rows={2}
-          className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-base outline-none focus:border-accent sm:text-sm"
-        />
-      </label>
+      {showNotes ? (
+        <label className="block text-sm">
+          <span className="mb-1 block text-muted">Notes</span>
+          <textarea
+            value={form.notes}
+            onChange={(event) =>
+              setForm((prev) => ({ ...prev, notes: event.target.value }))
+            }
+            rows={2}
+            className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-base outline-none focus:border-accent sm:text-sm"
+          />
+        </label>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowNotes(true)}
+          className="text-sm text-accent"
+        >
+          Add note
+        </button>
+      )}
 
       {error ? <p className="text-sm text-expense">{error}</p> : null}
 
@@ -227,13 +238,13 @@ export function TransactionForm({
         <button
           type="button"
           onClick={onCancel}
-          className="min-h-11 rounded-xl px-4 py-2 text-sm text-muted active:bg-surface-2"
+          className="hidden min-h-11 rounded-xl px-4 py-2 text-sm text-muted active:bg-surface-2 sm:inline-flex sm:items-center"
         >
           Cancel
         </button>
         <button
           type="submit"
-          className="min-h-11 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-background"
+          className="min-h-12 w-full rounded-xl bg-accent px-4 text-sm font-medium text-background sm:min-h-11 sm:w-auto"
         >
           {initial ? "Save changes" : "Add transaction"}
         </button>

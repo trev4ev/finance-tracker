@@ -48,11 +48,9 @@ export default function TransactionsPage() {
 
   return (
     <div className="space-y-4">
-      <header className="flex items-center justify-between gap-3">
+      <header className="hidden items-center justify-between gap-3 md:flex">
         <div>
-          <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
-            Transactions
-          </h2>
+          <h2 className="text-2xl font-semibold tracking-tight">Transactions</h2>
           <p className="text-sm text-muted">{rows.length} shown</p>
         </div>
         <button
@@ -65,7 +63,7 @@ export default function TransactionsPage() {
         </button>
       </header>
 
-      <div className="sticky top-0 z-20 -mx-4 space-y-3 bg-background/95 px-4 py-3 backdrop-blur-xl">
+      <div className="sticky top-0 z-20 -mx-4 space-y-2 bg-background/95 px-4 py-2 backdrop-blur-xl">
         <label className="relative block">
           <Search
             size={16}
@@ -75,6 +73,7 @@ export default function TransactionsPage() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search payees, notes, accounts…"
+            inputMode="search"
             className="h-11 w-full rounded-2xl border border-border bg-surface py-2 pr-3 pl-9 text-base outline-none focus:border-accent sm:text-sm"
           />
         </label>

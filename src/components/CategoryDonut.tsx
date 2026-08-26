@@ -5,8 +5,10 @@ import { formatMoney } from "@/lib/money";
 
 export function CategoryDonut({
   slices,
+  compactCount = 6,
 }: {
   slices: { category: Category; amount: number }[];
+  compactCount?: number;
 }) {
   const total = slices.reduce((sum, slice) => sum + slice.amount, 0);
   const size = 180;
@@ -79,10 +81,13 @@ export function CategoryDonut({
         </text>
       </svg>
       <ul className="w-full space-y-3">
-        {slices.slice(0, 6).map((slice) => {
+        {slices.slice(0, 6).map((slice, index) => {
           const pct = total === 0 ? 0 : (slice.amount / total) * 100;
           return (
-            <li key={slice.category.id} className="space-y-1.5">
+            <li
+              key={slice.category.id}
+              className={`space-y-1.5 ${index >= compactCount ? "hidden sm:block" : ""}`}
+            >
               <div className="flex items-center justify-between gap-3 text-sm">
                 <span className="flex min-w-0 items-center gap-2">
                   <span
@@ -109,6 +114,11 @@ export function CategoryDonut({
         })}
         {slices.length === 0 ? (
           <li className="text-sm text-muted">No expenses this month.</li>
+        ) : null}
+        {slices.length > compactCount ? (
+          <li className="text-xs text-muted sm:hidden">
+            +{slices.length - compactCount} more
+          </li>
         ) : null}
       </ul>
     </div>

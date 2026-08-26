@@ -83,7 +83,7 @@ export default function AccountsPage() {
               key={account.id}
               type="button"
               onClick={() => setEditing(account)}
-              className="rounded-2xl border border-border bg-surface p-4 text-left active:scale-[0.99] sm:p-5"
+              className="rounded-2xl border border-border bg-surface p-3.5 text-left active:scale-[0.99] sm:p-5"
             >
               <div className="flex items-start justify-between gap-3">
                 <p className="text-[11px] tracking-wide text-muted uppercase">
@@ -101,7 +101,7 @@ export default function AccountsPage() {
                 </p>
               ) : null}
               <p
-                className={`mt-4 font-mono text-2xl ${
+                className={`mt-3 font-mono text-2xl ${
                   balance < 0 ? "text-expense" : "text-foreground"
                 }`}
               >

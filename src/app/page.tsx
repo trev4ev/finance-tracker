@@ -91,38 +91,33 @@ export default function OverviewPage() {
       </header>
 
       <section className="rounded-2xl border border-border bg-surface p-4 lg:hidden">
-        <p className="text-xs font-medium tracking-wide text-muted uppercase">
-          Net this month
-        </p>
-        <p
-          className={`mt-1 font-mono text-3xl font-semibold ${
-            totals.net < 0 ? "text-expense" : "text-foreground"
-          }`}
-        >
-          {formatMoney(totals.net)}
-        </p>
-        <p className="mt-1 text-xs text-muted">
-          {totals.net >= 0 ? "In the black" : "Spending more than you earn"}
-        </p>
-        <div className="mt-3 flex h-1.5 overflow-hidden rounded-full bg-surface-2">
-          <div className="bg-income" style={{ width: `${incomeShare}%` }} />
-          <div className="bg-expense" style={{ width: `${100 - incomeShare}%` }} />
-        </div>
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          <div className="rounded-xl bg-surface-2 px-3 py-2.5">
-            <p className="text-[11px] text-muted">In</p>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-xs font-medium tracking-wide text-muted uppercase">
+              Net this month
+            </p>
+            <p
+              className={`mt-0.5 font-mono text-3xl font-semibold ${
+                totals.net < 0 ? "text-expense" : "text-foreground"
+              }`}
+            >
+              {formatMoney(totals.net)}
+            </p>
+          </div>
+          <div className="pt-1 text-right">
             <p className="font-mono text-sm text-income">
               {formatSignedMoney(totals.income)}
             </p>
-          </div>
-          <div className="rounded-xl bg-surface-2 px-3 py-2.5">
-            <p className="text-[11px] text-muted">Out</p>
             <p className="font-mono text-sm text-expense">
               {formatSignedMoney(-totals.expenses)}
             </p>
           </div>
         </div>
-        <div className="mt-3 flex items-center justify-between border-t border-border/70 pt-3 text-sm">
+        <div className="mt-3 flex h-1.5 overflow-hidden rounded-full bg-surface-2">
+          <div className="bg-income" style={{ width: `${incomeShare}%` }} />
+          <div className="bg-expense" style={{ width: `${100 - incomeShare}%` }} />
+        </div>
+        <div className="mt-3 flex items-center justify-between text-sm">
           <span className="text-muted">Net worth</span>
           <span className="font-mono font-medium">{formatMoney(worth)}</span>
         </div>
@@ -165,7 +160,7 @@ export default function OverviewPage() {
             <Link
               key={account.id}
               href="/accounts"
-              className="w-[min(78%,18rem)] shrink-0 snap-start rounded-2xl border border-border bg-surface p-4 active:scale-[0.99]"
+              className="w-[min(70%,16rem)] shrink-0 snap-start rounded-2xl border border-border bg-surface px-4 py-3 active:scale-[0.99]"
             >
               <p className="text-[11px] tracking-wide text-muted uppercase">
                 {account.type}
@@ -173,7 +168,7 @@ export default function OverviewPage() {
               </p>
               <p className="mt-1 truncate font-medium">{account.name}</p>
               <p
-                className={`mt-3 font-mono text-lg ${
+                className={`mt-2 font-mono text-lg ${
                   account.type === "credit" || balance < 0
                     ? "text-expense"
                     : "text-foreground"
@@ -188,10 +183,36 @@ export default function OverviewPage() {
         </div>
       </section>
 
+      <section className="rounded-2xl border border-border bg-surface p-4 lg:hidden">
+        <div className="mb-1 flex items-center justify-between">
+          <h3 className="font-medium">Recent</h3>
+          <Link
+            href="/transactions"
+            className="inline-flex items-center text-sm text-accent"
+          >
+            View all
+            <ChevronRight size={16} />
+          </Link>
+        </div>
+        <ul className="-mx-2 divide-y divide-border/70">
+          {recent.slice(0, 4).map((tx) => (
+            <li key={tx.id}>
+              <TransactionRow
+                tx={tx}
+                category={lookup(state.categories, tx.categoryId)}
+                account={lookup(state.accounts, tx.accountId)}
+                toAccount={lookup(state.accounts, tx.toAccountId)}
+                onClick={() => setEditing(tx)}
+              />
+            </li>
+          ))}
+        </ul>
+      </section>
+
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
           <h3 className="mb-4 font-medium">Spending by category</h3>
-          <CategoryDonut slices={slices} />
+          <CategoryDonut slices={slices} compactCount={4} />
         </div>
         <div className="hidden rounded-2xl border border-border bg-surface p-5 lg:block">
           <div className="mb-4 flex items-center justify-between">
@@ -205,8 +226,8 @@ export default function OverviewPage() {
         </div>
       </section>
 
-      <section className="grid gap-4 lg:grid-cols-2">
-        <div className="hidden rounded-2xl border border-border bg-surface p-5 lg:block">
+      <section className="hidden gap-4 lg:grid lg:grid-cols-2">
+        <div className="rounded-2xl border border-border bg-surface p-5">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="font-medium">Accounts</h3>
             <Link href="/accounts" className="text-sm text-accent">
@@ -239,15 +260,11 @@ export default function OverviewPage() {
           </ul>
         </div>
 
-        <div className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
+        <div className="rounded-2xl border border-border bg-surface p-5">
           <div className="mb-2 flex items-center justify-between">
             <h3 className="font-medium">Recent activity</h3>
-            <Link
-              href="/transactions"
-              className="inline-flex items-center text-sm text-accent"
-            >
+            <Link href="/transactions" className="text-sm text-accent">
               View all
-              <ChevronRight size={16} className="lg:hidden" />
             </Link>
           </div>
           <ul className="-mx-2 divide-y divide-border/70">

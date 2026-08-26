@@ -18,7 +18,7 @@ export function SegmentedControl<T extends string>({
             key={option.value}
             type="button"
             onClick={() => onChange(option.value)}
-            className={`h-10 rounded-xl px-1 text-xs font-medium sm:text-sm ${
+            className={`h-9 rounded-xl px-1 text-xs font-medium sm:h-10 sm:text-sm ${
               selected
                 ? "bg-surface text-foreground shadow-sm"
                 : "text-muted active:text-foreground"

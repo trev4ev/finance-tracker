@@ -101,7 +101,7 @@ export default function BudgetsPage() {
             key={budget.id}
             type="button"
             onClick={() => setEditing(budget)}
-            className="w-full rounded-2xl border border-border bg-surface p-4 text-left active:scale-[0.99]"
+            className="w-full rounded-2xl border border-border bg-surface p-3.5 text-left active:scale-[0.99]"
           >
             <div className="mb-3 flex items-start justify-between gap-3">
               <div className="min-w-0">
