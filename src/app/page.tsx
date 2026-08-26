@@ -11,7 +11,12 @@ import { MonthSwitcher } from "@/components/MonthSwitcher";
 import { StatCard } from "@/components/StatCard";
 import { TransactionForm } from "@/components/TransactionForm";
 import { TransactionRow } from "@/components/TransactionRow";
-import { currentMonth, lastNMonths, monthLabel } from "@/lib/dates";
+import {
+  currentMonth,
+  formatRelativeTimestamp,
+  lastNMonths,
+  monthLabel,
+} from "@/lib/dates";
 import {
   accountBalance,
   lookup,
@@ -22,6 +27,7 @@ import {
 } from "@/lib/finance";
 import { formatMoney, formatSignedMoney } from "@/lib/money";
 import { useFinance } from "@/lib/store";
+import { transactionsHref } from "@/lib/transactions-href";
 import type { Transaction } from "@/lib/types";
 
 export default function OverviewPage() {
@@ -129,12 +135,14 @@ export default function OverviewPage() {
           value={totals.income}
           tone="income"
           hint={monthLabel(month)}
+          href={transactionsHref({ type: "income", month })}
         />
         <StatCard
           label="Expenses"
           value={-totals.expenses}
           tone="expense"
           hint={monthLabel(month)}
+          href={transactionsHref({ type: "expense", month })}
         />
         <StatCard
           label="Net cash flow"
@@ -159,7 +167,7 @@ export default function OverviewPage() {
           {accounts.map(({ account, balance }) => (
             <Link
               key={account.id}
-              href="/accounts"
+              href={transactionsHref({ account: account.id })}
               className="w-[min(70%,16rem)] shrink-0 snap-start rounded-2xl border border-border bg-surface px-4 py-3 active:scale-[0.99]"
             >
               <p className="text-[11px] tracking-wide text-muted uppercase">
@@ -212,7 +220,7 @@ export default function OverviewPage() {
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
           <h3 className="mb-4 font-medium">Spending by category</h3>
-          <CategoryDonut slices={slices} compactCount={4} />
+          <CategoryDonut slices={slices} compactCount={4} month={month} />
         </div>
         <div className="hidden rounded-2xl border border-border bg-surface p-5 lg:block">
           <div className="mb-4 flex items-center justify-between">
@@ -235,28 +243,40 @@ export default function OverviewPage() {
             </Link>
           </div>
           <ul className="space-y-3">
-            {accounts.map(({ account, balance }) => (
-              <li
-                key={account.id}
-                className="flex items-center justify-between rounded-xl bg-surface-2 px-3 py-3"
-              >
-                <div>
-                  <p className="text-sm font-medium">{account.name}</p>
-                  <p className="text-xs text-muted capitalize">{account.type}</p>
-                </div>
-                <p
-                  className={`font-mono text-sm ${
-                    account.type === "credit" || balance < 0
-                      ? "text-expense"
-                      : "text-foreground"
-                  }`}
-                >
-                  {account.type === "credit" && balance < 0
-                    ? `${formatMoney(Math.abs(balance))} owed`
-                    : formatMoney(balance)}
-                </p>
-              </li>
-            ))}
+            {accounts.map(({ account, balance }) => {
+              const relative = formatRelativeTimestamp(account.lastSyncedAt);
+              return (
+                <li key={account.id}>
+                  <Link
+                    href={transactionsHref({ account: account.id })}
+                    className="flex items-center justify-between rounded-xl bg-surface-2 px-3 py-3 hover:bg-surface-2/80"
+                  >
+                    <div>
+                      <p className="text-sm font-medium">{account.name}</p>
+                      <p className="text-xs text-muted capitalize">
+                        {account.type}
+                        {account.source === "plaid"
+                          ? relative
+                            ? ` · synced ${relative}`
+                            : " · not synced yet"
+                          : ""}
+                      </p>
+                    </div>
+                    <p
+                      className={`font-mono text-sm ${
+                        account.type === "credit" || balance < 0
+                          ? "text-expense"
+                          : "text-foreground"
+                      }`}
+                    >
+                      {account.type === "credit" && balance < 0
+                        ? `${formatMoney(Math.abs(balance))} owed`
+                        : formatMoney(balance)}
+                    </p>
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         </div>
 

@@ -2,6 +2,7 @@
 
 import { useRef, useState } from "react";
 import Link from "next/link";
+import { NativeSelect } from "@/components/form-controls";
 import { parseTransactionsCsv, transactionsToCsv } from "@/lib/csv";
 import { createClient } from "@/lib/supabase/client";
 import { useFinance } from "@/lib/store";
@@ -103,16 +104,16 @@ export default function SettingsPage() {
             placeholder="New category"
             className="h-12 flex-1 rounded-xl border border-border bg-surface-2 px-3 text-base outline-none focus:border-accent sm:h-11 sm:text-sm"
           />
-          <select
+          <NativeSelect
+            className="w-36 shrink-0"
             value={kind}
             onChange={(event) =>
               setKind(event.target.value as "income" | "expense")
             }
-            className="h-12 rounded-xl border border-border bg-surface-2 px-3 text-base outline-none focus:border-accent sm:h-11 sm:text-sm"
           >
             <option value="expense">Expense</option>
             <option value="income">Income</option>
-          </select>
+          </NativeSelect>
           <button
             type="submit"
             className="min-h-11 rounded-xl bg-accent px-4 text-sm font-medium text-background"
@@ -149,7 +150,7 @@ export default function SettingsPage() {
       <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
         <h3 className="mb-2 font-medium">Import & export</h3>
         <p className="mb-4 text-sm text-muted">
-          CSV columns: date, description, amount, type, account, category,
+          CSV columns: date, description, amount, original_amount, type, account, category,
           to_account, notes.
         </p>
         <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">

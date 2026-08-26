@@ -33,7 +33,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, cloudEnabled, error } = useFinance();
 
-  if (pathname === "/login") {
+  const path = pathname.replace(/\/$/, "") || "/";
+  if (path === "/login" || path === "/auth/callback") {
     return (
       <div className="min-h-full min-h-dvh bg-background text-foreground">
         {children}
@@ -54,8 +55,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {links.map((link) => {
             const active =
               link.href === "/"
-                ? pathname === "/"
-                : pathname.startsWith(link.href);
+                ? path === "/"
+                : path.startsWith(link.href);
             const Icon = link.icon;
             return (
               <Link
@@ -91,8 +92,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <main className="pb-[calc(6.5rem+env(safe-area-inset-bottom,0px))] lg:ml-60 lg:pb-10">
-        <div className="mx-auto max-w-6xl px-4 pt-[max(1.25rem,env(safe-area-inset-top,0px))] pb-28 sm:px-6 lg:py-6 lg:pb-0">
+      <main className="lg:ml-60 lg:pb-10">
+        <div className="mx-auto max-w-6xl px-4 pt-[max(1.25rem,env(safe-area-inset-top,0px))] pb-[calc(8rem+env(safe-area-inset-bottom,0px))] sm:px-6 lg:py-6 lg:pb-0">
           {error ? (
             <p className="mb-4 rounded-xl border border-expense/30 bg-expense/10 px-3 py-2 text-sm text-expense">
               {error}
@@ -107,8 +108,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {links.map((link) => {
             const active =
               link.href === "/"
-                ? pathname === "/"
-                : pathname.startsWith(link.href);
+                ? path === "/"
+                : path.startsWith(link.href);
             const Icon = link.icon;
             return (
               <Link

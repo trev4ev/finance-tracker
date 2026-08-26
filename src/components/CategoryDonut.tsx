@@ -1,15 +1,21 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { Category } from "@/lib/types";
 import { formatMoney } from "@/lib/money";
+import { transactionsHref } from "@/lib/transactions-href";
 
 export function CategoryDonut({
   slices,
   compactCount = 6,
+  month,
 }: {
   slices: { category: Category; amount: number }[];
   compactCount?: number;
+  month?: string;
 }) {
+  const router = useRouter();
   const total = slices.reduce((sum, slice) => sum + slice.amount, 0);
   const size = 180;
   const stroke = 22;
@@ -58,6 +64,17 @@ export function CategoryDonut({
             strokeDashoffset={-arc.offset}
             strokeLinecap="butt"
             transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            className={month ? "cursor-pointer" : undefined}
+            onClick={() => {
+              if (!month) return;
+              router.push(
+                transactionsHref({
+                  type: "expense",
+                  category: arc.category.id,
+                  month,
+                }),
+              );
+            }}
           />
         ))}
         <text
@@ -83,11 +100,8 @@ export function CategoryDonut({
       <ul className="w-full space-y-3">
         {slices.slice(0, 6).map((slice, index) => {
           const pct = total === 0 ? 0 : (slice.amount / total) * 100;
-          return (
-            <li
-              key={slice.category.id}
-              className={`space-y-1.5 ${index >= compactCount ? "hidden sm:block" : ""}`}
-            >
+          const row = (
+            <>
               <div className="flex items-center justify-between gap-3 text-sm">
                 <span className="flex min-w-0 items-center gap-2">
                   <span
@@ -109,6 +123,27 @@ export function CategoryDonut({
                   }}
                 />
               </div>
+            </>
+          );
+          return (
+            <li
+              key={slice.category.id}
+              className={index >= compactCount ? "hidden sm:block" : undefined}
+            >
+              {month ? (
+                <Link
+                  href={transactionsHref({
+                    type: "expense",
+                    category: slice.category.id,
+                    month,
+                  })}
+                  className="block space-y-1.5 rounded-lg px-1 py-0.5 hover:bg-surface-2"
+                >
+                  {row}
+                </Link>
+              ) : (
+                <div className="space-y-1.5">{row}</div>
+              )}
             </li>
           );
         })}

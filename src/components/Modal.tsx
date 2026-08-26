@@ -14,7 +14,10 @@ export function Modal({
 }) {
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key === "Escape") {
+        if (event.defaultPrevented) return;
+        onClose();
+      }
     };
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";

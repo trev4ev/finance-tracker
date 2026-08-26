@@ -23,37 +23,56 @@ function numOrNull(
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function isJwtClockError(error: { code?: string; message?: string } | null) {
+  if (!error) return false;
+  return (
+    error.code === "PGRST303" ||
+    (error.message ?? "").toLowerCase().includes("jwt issued at future")
+  );
+}
+
+async function sleep(ms: number) {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 export async function loadFinanceState(
   supabase: SupabaseClient,
   userId: string,
 ): Promise<FinanceState> {
-  const [accounts, categories, transactions, budgets, plaidItems] =
-    await Promise.all([
-      supabase.from("accounts").select("*").eq("user_id", userId),
-      supabase.from("categories").select("*").eq("user_id", userId),
-      supabase.from("transactions").select("*").eq("user_id", userId),
-      supabase.from("budgets").select("*").eq("user_id", userId),
-      supabase
-        .from("plaid_items")
-        .select("id, institution_name, status, last_synced_at")
-        .eq("user_id", userId),
-    ]);
+  let lastError: { code?: string; message?: string } | null = null;
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (attempt > 0) await sleep(800 * attempt);
+    const [accounts, categories, transactions, budgets, plaidItems] =
+      await Promise.all([
+        supabase.from("accounts").select("*").eq("user_id", userId),
+        supabase.from("categories").select("*").eq("user_id", userId),
+        supabase.from("transactions").select("*").eq("user_id", userId),
+        supabase.from("budgets").select("*").eq("user_id", userId),
+        supabase
+          .from("plaid_items")
+          .select("id, institution_name, status, last_synced_at")
+          .eq("user_id", userId),
+      ]);
 
-  const error =
-    accounts.error ||
-    categories.error ||
-    transactions.error ||
-    budgets.error ||
-    plaidItems.error;
-  if (error) throw error;
-
-  return normalizeState({
-    accounts: (accounts.data ?? []).map(accountFromRow),
-    categories: (categories.data ?? []).map(categoryFromRow),
-    transactions: (transactions.data ?? []).map(transactionFromRow),
-    budgets: (budgets.data ?? []).map(budgetFromRow),
-    plaidItems: (plaidItems.data ?? []).map(plaidItemFromRow),
-  });
+    const error =
+      accounts.error ||
+      categories.error ||
+      transactions.error ||
+      budgets.error ||
+      plaidItems.error;
+    if (!error) {
+      return normalizeState({
+        accounts: (accounts.data ?? []).map(accountFromRow),
+        categories: (categories.data ?? []).map(categoryFromRow),
+        transactions: (transactions.data ?? []).map(transactionFromRow),
+        budgets: (budgets.data ?? []).map(budgetFromRow),
+        plaidItems: (plaidItems.data ?? []).map(plaidItemFromRow),
+      });
+    }
+    lastError = error;
+    if (!isJwtClockError(error)) break;
+  }
+  throw new Error(lastError?.message ?? "Could not load cloud data");
 }
 
 export async function replaceFinanceState(
@@ -124,6 +143,7 @@ export function transactionToRow(tx: Transaction, userId: string) {
     date: tx.date,
     description: tx.description,
     amount: tx.amount,
+    original_amount: tx.originalAmount,
     type: tx.type,
     account_id: tx.accountId,
     category_id: tx.categoryId,
@@ -133,6 +153,7 @@ export function transactionToRow(tx: Transaction, userId: string) {
     plaid_transaction_id: tx.plaidTransactionId,
     pending: tx.pending,
     merchant_name: tx.merchantName,
+    plaid_category: tx.plaidCategory,
   };
 }
 
@@ -189,6 +210,9 @@ function transactionFromRow(row: Record<string, unknown>): Transaction {
     date: String(row.date).slice(0, 10),
     description: String(row.description),
     amount: num(row.amount as number),
+    originalAmount: num(
+      (row.original_amount as number | undefined) ?? (row.amount as number),
+    ),
     type: row.type as Transaction["type"],
     accountId: String(row.account_id),
     categoryId: (row.category_id as string | null) ?? null,
@@ -198,6 +222,7 @@ function transactionFromRow(row: Record<string, unknown>): Transaction {
     plaidTransactionId: (row.plaid_transaction_id as string | null) ?? null,
     pending: Boolean(row.pending),
     merchantName: (row.merchant_name as string | null) ?? null,
+    plaidCategory: (row.plaid_category as string | null) ?? null,
   };
 }
 

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { invokeFunction } from "@/lib/functions";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 
@@ -10,7 +11,6 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<"signin" | "signup">("signin");
-  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -30,28 +30,21 @@ export default function LoginPage() {
     event.preventDefault();
     setBusy(true);
     setError("");
-    setMessage("");
     const supabase = createClient();
     try {
-      if (mode === "signin") {
-        const { error: signError } = await supabase.auth.signInWithPassword({
+      if (mode === "signup") {
+        await invokeFunction<{ ok?: boolean }>("password-account", {
           email,
           password,
         });
-        if (signError) throw signError;
-        router.push("/");
-        router.refresh();
-      } else {
-        const { error: signError } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/auth/callback`,
-          },
-        });
-        if (signError) throw signError;
-        setMessage("Check your email to confirm the account, then sign in.");
       }
+
+      const { error: signError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (signError) throw signError;
+      router.push("/");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Authentication failed");
     } finally {
@@ -96,7 +89,6 @@ export default function LoginPage() {
           />
         </label>
         {error ? <p className="text-sm text-expense">{error}</p> : null}
-        {message ? <p className="text-sm text-accent">{message}</p> : null}
         <button
           type="submit"
           disabled={busy}
@@ -111,7 +103,6 @@ export default function LoginPage() {
         onClick={() => {
           setMode((prev) => (prev === "signin" ? "signup" : "signin"));
           setError("");
-          setMessage("");
         }}
       >
         {mode === "signin"

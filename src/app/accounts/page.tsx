@@ -2,13 +2,16 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Plus, RefreshCw } from "lucide-react";
+import { Pencil, Plus, RefreshCw } from "lucide-react";
+import { NativeSelect } from "@/components/form-controls";
 import { Modal } from "@/components/Modal";
 import { PlaidLinkButton } from "@/components/PlaidLinkButton";
 import { ACCOUNT_TYPES, type Account } from "@/lib/types";
 import { accountBalance } from "@/lib/finance";
+import { formatRelativeTimestamp } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { useFinance } from "@/lib/store";
+import { transactionsHref } from "@/lib/transactions-href";
 
 export default function AccountsPage() {
   const {
@@ -78,38 +81,58 @@ export default function AccountsPage() {
       <div className="grid gap-3 sm:grid-cols-2">
         {state.accounts.map((account) => {
           const balance = accountBalance(account, state.transactions);
+          const relative = formatRelativeTimestamp(account.lastSyncedAt);
+          const syncedLabel =
+            account.source === "plaid"
+              ? syncing
+                ? "Syncing…"
+                : relative
+                  ? `Synced ${relative}`
+                  : "Not synced yet"
+              : null;
           return (
-            <button
+            <div
               key={account.id}
-              type="button"
-              onClick={() => setEditing(account)}
-              className="rounded-2xl border border-border bg-surface p-3.5 text-left active:scale-[0.99] sm:p-5"
+              className="group relative rounded-2xl border border-border bg-surface active:scale-[0.99] hover:border-accent/40"
             >
-              <div className="flex items-start justify-between gap-3">
-                <p className="text-[11px] tracking-wide text-muted uppercase">
+              <Link
+                href={transactionsHref({ account: account.id })}
+                className="block p-3.5 pr-14 text-left sm:p-5"
+              >
+                <p className="text-xs tracking-wide text-muted uppercase">
                   {account.type}
                   {account.source === "plaid" ? " · linked" : ""}
                 </p>
-                <ChevronRight size={16} className="mt-0.5 text-muted" aria-hidden />
-              </div>
-              <h3 className="mt-1 text-lg font-medium">{account.name}</h3>
-              {account.institutionName || account.mask ? (
-                <p className="text-xs text-muted">
-                  {[account.institutionName, account.mask ? `•••• ${account.mask}` : null]
-                    .filter(Boolean)
-                    .join(" · ")}
+                <h3 className="mt-1 text-lg font-medium">{account.name}</h3>
+                {account.institutionName || account.mask ? (
+                  <p className="text-xs text-muted">
+                    {[account.institutionName, account.mask ? `•••• ${account.mask}` : null]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </p>
+                ) : null}
+                <p
+                  className={`mt-4 font-mono text-2xl ${
+                    balance < 0 ? "text-expense" : "text-foreground"
+                  }`}
+                >
+                  {account.type === "credit" && balance < 0
+                    ? `${formatMoney(Math.abs(balance))} owed`
+                    : formatMoney(balance)}
                 </p>
-              ) : null}
-              <p
-                className={`mt-3 font-mono text-2xl ${
-                  balance < 0 ? "text-expense" : "text-foreground"
-                }`}
+                {syncedLabel ? (
+                  <p className="mt-2 text-xs text-muted">{syncedLabel}</p>
+                ) : null}
+              </Link>
+              <button
+                type="button"
+                aria-label={`Edit ${account.name}`}
+                onClick={() => setEditing(account)}
+                className="absolute top-3 right-3 inline-flex h-11 w-11 items-center justify-center rounded-lg text-muted opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-surface-2 hover:text-foreground focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
               >
-                {account.type === "credit" && balance < 0
-                  ? `${formatMoney(Math.abs(balance))} owed`
-                  : formatMoney(balance)}
-              </p>
-            </button>
+                <Pencil size={16} />
+              </button>
+            </div>
           );
         })}
         {state.accounts.length === 0 ? (
@@ -194,26 +217,26 @@ function AccountModal({
             className="h-12 w-full rounded-xl border border-border bg-surface-2 px-3 text-base outline-none focus:border-accent sm:h-11 sm:text-sm"
           />
         </label>
-        <label className="block text-sm">
+        <div className="block text-sm">
           <span className="mb-1 block text-muted">Type</span>
-          <select
+          <NativeSelect
             value={type}
             onChange={(event) =>
               setType(event.target.value as Account["type"])
             }
-            className="h-12 w-full rounded-xl border border-border bg-surface-2 px-3 text-base outline-none focus:border-accent sm:h-11 sm:text-sm"
           >
             {ACCOUNT_TYPES.map((item) => (
               <option key={item.value} value={item.value}>
                 {item.label}
               </option>
             ))}
-          </select>
-        </label>
+          </NativeSelect>
+        </div>
         {initial?.source === "plaid" ? (
           <p className="text-sm text-muted">
-            This account is linked through Plaid. Balance comes from the bank;
-            renaming it here does not change the institution.
+            {initial.lastSyncedAt
+              ? `Last synced ${formatRelativeTimestamp(initial.lastSyncedAt)}.`
+              : "Not synced yet."}
           </p>
         ) : (
           <label className="block text-sm">

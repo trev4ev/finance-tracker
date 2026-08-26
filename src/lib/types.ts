@@ -41,6 +41,8 @@ export interface Transaction {
   date: string;
   description: string;
   amount: number;
+  /** Bank/posted amount. Stays put when you lower `amount` to your share. */
+  originalAmount: number;
   type: TransactionType;
   accountId: string;
   categoryId: string | null;
@@ -50,6 +52,7 @@ export interface Transaction {
   plaidTransactionId: string | null;
   pending: boolean;
   merchantName: string | null;
+  plaidCategory: string | null;
 }
 
 /** Form and seed payloads; `normalizeTransaction` fills Plaid/source fields. */

@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus } from "lucide-react";
+import Link from "next/link";
+import { Pencil, Plus } from "lucide-react";
+import { NativeSelect } from "@/components/form-controls";
 import { Modal } from "@/components/Modal";
 import { MonthSwitcher } from "@/components/MonthSwitcher";
 import { currentMonth, monthLabel } from "@/lib/dates";
@@ -9,6 +11,7 @@ import { lookup, spentForBudget } from "@/lib/finance";
 import { formatMoney, parseAmount } from "@/lib/money";
 import { useFinance } from "@/lib/store";
 import type { Budget } from "@/lib/types";
+import { transactionsHref } from "@/lib/transactions-href";
 
 export default function BudgetsPage() {
   const { state, hydrated, upsertBudget, deleteBudget } = useFinance();
@@ -97,41 +100,56 @@ export default function BudgetsPage() {
 
       <div className="space-y-3">
         {rows.map(({ budget, category, spent, remaining, pct }) => (
-          <button
+          <div
             key={budget.id}
-            type="button"
-            onClick={() => setEditing(budget)}
-            className="w-full rounded-2xl border border-border bg-surface p-3.5 text-left active:scale-[0.99]"
+            className="group relative rounded-2xl border border-border bg-surface p-3.5"
           >
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="truncate font-medium">{category?.name ?? "Category"}</p>
-                <p className="text-xs text-muted">
-                  {formatMoney(spent)} of {formatMoney(budget.amount)}
+            <Link
+              href={transactionsHref({
+                type: "expense",
+                category: budget.categoryId,
+                month,
+              })}
+              className="block pr-12 text-left"
+            >
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{category?.name ?? "Category"}</p>
+                  <p className="text-xs text-muted">
+                    {formatMoney(spent)} of {formatMoney(budget.amount)}
+                  </p>
+                </div>
+                <p
+                  className={`shrink-0 font-mono text-sm ${
+                    remaining < 0 ? "text-expense" : "text-income"
+                  }`}
+                >
+                  {remaining < 0
+                    ? `${formatMoney(Math.abs(remaining))} over`
+                    : `${formatMoney(remaining)} left`}
                 </p>
               </div>
-              <p
-                className={`shrink-0 font-mono text-sm ${
-                  remaining < 0 ? "text-expense" : "text-income"
-                }`}
-              >
-                {remaining < 0
-                  ? `${formatMoney(Math.abs(remaining))} over`
-                  : `${formatMoney(remaining)} left`}
-              </p>
-            </div>
-            <div className="h-2.5 overflow-hidden rounded-full bg-surface-2">
-              <div
-                className={`h-full rounded-full ${
-                  remaining < 0 ? "bg-expense" : "bg-accent"
-                }`}
-                style={{
-                  width: `${pct}%`,
-                  background: remaining < 0 ? undefined : category?.color,
-                }}
-              />
-            </div>
-          </button>
+              <div className="h-2.5 overflow-hidden rounded-full bg-surface-2">
+                <div
+                  className={`h-full rounded-full ${
+                    remaining < 0 ? "bg-expense" : "bg-accent"
+                  }`}
+                  style={{
+                    width: `${pct}%`,
+                    background: remaining < 0 ? undefined : category?.color,
+                  }}
+                />
+              </div>
+            </Link>
+            <button
+              type="button"
+              aria-label={`Edit ${category?.name ?? "budget"}`}
+              onClick={() => setEditing(budget)}
+              className="absolute top-3 right-3 inline-flex h-11 w-11 items-center justify-center rounded-lg text-muted opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-surface-2 hover:text-foreground focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+            >
+              <Pencil size={16} />
+            </button>
+          </div>
         ))}
         {rows.length === 0 ? (
           <p className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted">
@@ -213,21 +231,20 @@ function BudgetModal({
           onSave({ categoryId, month, amount: parsed });
         }}
       >
-        <label className="block text-sm">
+        <div className="block text-sm">
           <span className="mb-1 block text-muted">Category</span>
-          <select
+          <NativeSelect
             value={categoryId}
             onChange={(event) => setCategoryId(event.target.value)}
             disabled={Boolean(initial)}
-            className="h-12 w-full rounded-xl border border-border bg-surface-2 px-3 text-base outline-none focus:border-accent disabled:opacity-70 sm:h-11 sm:text-sm"
           >
             {categoryOptions.map((category) => (
               <option key={category.id} value={category.id}>
                 {category.name}
               </option>
             ))}
-          </select>
-        </label>
+          </NativeSelect>
+        </div>
         <label className="block text-sm">
           <span className="mb-1 block text-muted">Monthly cap</span>
           <input

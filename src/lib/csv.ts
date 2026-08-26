@@ -12,22 +12,26 @@ export function transactionsToCsv(state: FinanceState): string {
     "date",
     "description",
     "amount",
+    "original_amount",
     "type",
     "account",
     "category",
     "to_account",
     "notes",
+    "plaid_category",
   ];
   const rows = state.transactions.map((tx) =>
     [
       tx.date,
       tx.description,
       tx.amount.toFixed(2),
+      tx.originalAmount.toFixed(2),
       tx.type,
       lookup(state.accounts, tx.accountId)?.name ?? "",
       lookup(state.categories, tx.categoryId)?.name ?? "",
       lookup(state.accounts, tx.toAccountId)?.name ?? "",
       tx.notes,
+      tx.plaidCategory ?? "",
     ]
       .map(escapeCsv)
       .join(","),
@@ -57,6 +61,8 @@ export function parseTransactionsCsv(
     const date = cols[idx("date")]?.trim();
     const description = cols[idx("description")]?.trim();
     const amount = Number(cols[idx("amount")]);
+    const originalRaw = cols[idx("original_amount")];
+    const originalAmount = Number(originalRaw);
     const type = cols[idx("type")]?.trim() as TransactionType;
     const accountName = cols[idx("account")]?.trim().toLowerCase();
     const categoryName = cols[idx("category")]?.trim().toLowerCase();
@@ -72,6 +78,9 @@ export function parseTransactionsCsv(
         date,
         description,
         amount: Math.round(amount * 100) / 100,
+        originalAmount: Number.isFinite(originalAmount)
+          ? Math.round(originalAmount * 100) / 100
+          : Math.round(amount * 100) / 100,
         type,
         accountId,
         categoryId: categoryByName.get(categoryName ?? "") ?? null,

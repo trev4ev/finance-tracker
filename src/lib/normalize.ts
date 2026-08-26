@@ -25,6 +25,7 @@ const TRANSACTION_DEFAULTS = {
   plaidTransactionId: null as string | null,
   pending: false,
   merchantName: null as string | null,
+  plaidCategory: null as string | null,
 };
 
 export function normalizeAccount(
@@ -37,7 +38,11 @@ export function normalizeAccount(
 export function normalizeTransaction(
   tx: TransactionInput & { id: string },
 ): Transaction {
-  return { ...TRANSACTION_DEFAULTS, ...tx };
+  const merged = { ...TRANSACTION_DEFAULTS, ...tx };
+  return {
+    ...merged,
+    originalAmount: merged.originalAmount ?? merged.amount,
+  };
 }
 
 export function normalizeState(state: {
