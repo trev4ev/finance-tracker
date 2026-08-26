@@ -4,10 +4,18 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronDown, ChevronLeft, ChevronRight, Plus, Search } from "lucide-react";
 import { NativeDateInput, NativeSelect } from "@/components/form-controls";
+import { Fab } from "@/components/Fab";
 import { Modal } from "@/components/Modal";
+import { SegmentedControl } from "@/components/SegmentedControl";
 import { TransactionForm } from "@/components/TransactionForm";
-import { formatDisplayDate } from "@/lib/dates";
-import { lookup, transactionDetailLabel, hasAdjustedAmount } from "@/lib/finance";
+import { TransactionRow } from "@/components/TransactionRow";
+import { formatDayHeading, formatDisplayDate } from "@/lib/dates";
+import {
+  groupTransactionsByDate,
+  hasAdjustedAmount,
+  lookup,
+  transactionDetailLabel,
+} from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { useFinance } from "@/lib/store";
 import { transactionsHref } from "@/lib/transactions-href";
@@ -17,6 +25,13 @@ const PAGE_SIZE = 100;
 
 type SortKey = "date" | "amount";
 type SortDir = "asc" | "desc";
+
+const TYPE_FILTERS: { value: "all" | TransactionType; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "expense", label: "Spent" },
+  { value: "income", label: "Income" },
+  { value: "transfer", label: "Moves" },
+];
 
 function parseType(value: string | null): "all" | TransactionType {
   if (value === "income" || value === "expense" || value === "transfer") {
@@ -89,8 +104,8 @@ function TransactionsList() {
       const account = lookup(state.accounts, tx.accountId)?.name ?? "";
       const category = lookup(state.categories, tx.categoryId)?.name ?? "";
       const plaid = tx.plaidCategory ?? "";
-      return [tx.description, tx.notes, account, category, plaid].some((value) =>
-        value.toLowerCase().includes(q),
+      return [tx.description, tx.notes, account, category, plaid, tx.merchantName ?? ""].some(
+        (value) => value.toLowerCase().includes(q),
       );
     });
     const direction = sortDir === "asc" ? 1 : -1;
@@ -123,13 +138,13 @@ function TransactionsList() {
   );
   const rangeStart = rows.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1;
   const rangeEnd = Math.min(currentPage * PAGE_SIZE, rows.length);
-  const filtersActive =
-    query.trim() !== "" ||
-    typeFilter !== "all" ||
+  const extraFiltersActive =
     accountFilter !== "all" ||
     categoryFilter !== "all" ||
     fromDate !== "" ||
     toDate !== "";
+  const filtersActive =
+    query.trim() !== "" || typeFilter !== "all" || extraFiltersActive;
 
   useEffect(() => {
     setPage(1);
@@ -166,13 +181,15 @@ function TransactionsList() {
     router.replace(transactionsHref(next));
   }
 
+  const groups = useMemo(() => groupTransactionsByDate(pageRows), [pageRows]);
+
   if (!hydrated) {
     return <div className="h-40 animate-pulse rounded-2xl bg-surface" />;
   }
 
   return (
-    <div className="space-y-5">
-      <header className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-4">
+      <header className="hidden items-center justify-between gap-3 md:flex">
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">Transactions</h2>
           <p className="text-sm text-muted">
@@ -184,14 +201,14 @@ function TransactionsList() {
         <button
           type="button"
           onClick={() => setEditing("new")}
-          className="inline-flex items-center gap-2 rounded-xl bg-accent px-3 py-2 text-sm font-medium text-background"
+          className="hidden h-11 items-center gap-2 rounded-2xl bg-accent px-4 text-sm font-medium text-background lg:inline-flex"
         >
           <Plus size={16} />
           Add transaction
         </button>
       </header>
 
-      <div className="space-y-3">
+      <div className="sticky top-0 z-20 -mx-4 space-y-2 bg-background/95 px-4 py-2 backdrop-blur-xl">
         <label className="relative block">
           <Search
             size={16}
@@ -201,10 +218,16 @@ function TransactionsList() {
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search payees, notes, accounts…"
-            className="w-full rounded-xl border border-border bg-surface py-2 pr-3 pl-9 text-sm outline-none focus:border-accent"
+            inputMode="search"
+            className="h-11 w-full rounded-2xl border border-border bg-surface py-2 pr-3 pl-9 text-base outline-none focus:border-accent sm:text-sm"
           />
         </label>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+        <SegmentedControl
+          value={typeFilter}
+          onChange={(value) => updateFilters({ type: value })}
+          options={TYPE_FILTERS}
+        />
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
           <div className="block text-sm">
             <span className="mb-1 block text-muted">From</span>
             <NativeDateInput
@@ -254,23 +277,6 @@ function TransactionsList() {
               ))}
             </NativeSelect>
           </div>
-          <div className="block text-sm">
-            <span className="mb-1 block text-muted">Type</span>
-            <NativeSelect
-              tone="surface"
-              value={typeFilter}
-              onChange={(event) =>
-                updateFilters({
-                  type: event.target.value as "all" | TransactionType,
-                })
-              }
-            >
-              <option value="all">All types</option>
-              <option value="expense">Expenses</option>
-              <option value="income">Income</option>
-              <option value="transfer">Transfers</option>
-            </NativeSelect>
-          </div>
           {filtersActive ? (
             <div className="flex items-end">
               <button
@@ -279,7 +285,7 @@ function TransactionsList() {
                   setQuery("");
                   router.replace("/transactions");
                 }}
-                className="w-full rounded-xl border border-border px-3 py-2 text-sm text-muted hover:bg-surface-2"
+                className="h-11 w-full rounded-xl border border-border px-3 text-sm text-muted active:bg-surface-2"
               >
                 Clear filters
               </button>
@@ -288,7 +294,56 @@ function TransactionsList() {
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+      <div className="space-y-4 md:hidden">
+        {sortKey === "date"
+          ? groups.map((group) => (
+              <section key={group.date}>
+                <h3 className="px-1 pb-2 text-xs font-medium tracking-wide text-muted uppercase">
+                  {formatDayHeading(group.date)}
+                </h3>
+                <ul className="divide-y divide-border/70 overflow-hidden rounded-2xl border border-border bg-surface">
+                  {group.items.map((tx) => (
+                    <li key={tx.id}>
+                      <TransactionRow
+                        tx={tx}
+                        category={lookup(state.categories, tx.categoryId)}
+                        account={lookup(state.accounts, tx.accountId)}
+                        toAccount={lookup(state.accounts, tx.toAccountId)}
+                        onClick={() => setEditing(tx)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))
+          : (
+              <ul className="divide-y divide-border/70 overflow-hidden rounded-2xl border border-border bg-surface">
+                {pageRows.map((tx) => (
+                  <li key={tx.id}>
+                    <TransactionRow
+                      tx={tx}
+                      category={lookup(state.categories, tx.categoryId)}
+                      account={lookup(state.accounts, tx.accountId)}
+                      toAccount={lookup(state.accounts, tx.toAccountId)}
+                      onClick={() => setEditing(tx)}
+                    />
+                  </li>
+                ))}
+              </ul>
+            )}
+        {rows.length === 0 ? (
+          <button
+            type="button"
+            onClick={() => setEditing("new")}
+            className="w-full rounded-2xl border border-dashed border-border px-4 py-10 text-center text-sm text-muted active:bg-surface"
+          >
+            No transactions match these filters.
+            <span className="mt-1 block text-accent">Tap to add one</span>
+          </button>
+        ) : null}
+      </div>
+
+      <div className="hidden overflow-hidden rounded-2xl border border-border bg-surface md:block">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-border text-xs tracking-wide text-muted uppercase">
             <tr>
@@ -301,7 +356,7 @@ function TransactionsList() {
                 />
               </th>
               <th className="px-4 py-3 font-medium">Details</th>
-              <th className="hidden px-4 py-3 font-medium sm:table-cell">Account</th>
+              <th className="px-4 py-3 font-medium">Account</th>
               <th className="px-4 py-3 text-right font-medium">
                 <SortButton
                   label="Amount"
@@ -338,9 +393,7 @@ function TransactionsList() {
                       {transactionDetailLabel(tx, state)}
                     </p>
                   </td>
-                  <td className="hidden px-4 py-3 text-muted sm:table-cell">
-                    {account?.name}
-                  </td>
+                  <td className="px-4 py-3 text-muted">{account?.name}</td>
                   <td
                     className={`px-4 py-3 text-right font-mono ${
                       tx.type === "income"
@@ -382,7 +435,7 @@ function TransactionsList() {
               type="button"
               disabled={currentPage <= 1}
               onClick={() => setPage((value) => Math.max(1, value - 1))}
-              className="inline-flex items-center gap-1 rounded-xl border border-border bg-surface px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40 hover:bg-surface-2"
+              className="inline-flex h-11 items-center gap-1 rounded-xl border border-border bg-surface px-3 text-sm disabled:cursor-not-allowed disabled:opacity-40 active:bg-surface-2"
             >
               <ChevronLeft size={16} />
               Previous
@@ -391,7 +444,7 @@ function TransactionsList() {
               type="button"
               disabled={currentPage >= pageCount}
               onClick={() => setPage((value) => Math.min(pageCount, value + 1))}
-              className="inline-flex items-center gap-1 rounded-xl border border-border bg-surface px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-40 hover:bg-surface-2"
+              className="inline-flex h-11 items-center gap-1 rounded-xl border border-border bg-surface px-3 text-sm disabled:cursor-not-allowed disabled:opacity-40 active:bg-surface-2"
             >
               Next
               <ChevronRight size={16} />
@@ -399,6 +452,10 @@ function TransactionsList() {
           </div>
         </div>
       ) : null}
+
+      {editing ? null : (
+        <Fab label="Add transaction" onClick={() => setEditing("new")} />
+      )}
 
       {editing ? (
         <Modal
@@ -418,7 +475,7 @@ function TransactionsList() {
           {editing !== "new" ? (
             <button
               type="button"
-              className="mt-3 w-full rounded-xl border border-expense/30 px-4 py-2 text-sm text-expense hover:bg-expense/10"
+              className="mt-3 min-h-11 w-full rounded-xl border border-expense/30 px-4 py-2 text-sm text-expense active:bg-expense/10"
               onClick={() => {
                 deleteTransaction(editing.id);
                 setEditing(null);

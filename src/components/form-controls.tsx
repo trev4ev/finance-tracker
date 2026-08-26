@@ -26,7 +26,7 @@ const WEEKDAYS = ["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"];
 
 function triggerClass(tone: Tone, open: boolean) {
   const bg = tone === "surface" ? "bg-surface" : "bg-surface-2";
-  return `flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-sm outline-none ${bg} ${
+  return `flex min-h-11 w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-sm outline-none ${bg} ${
     open ? "border-accent" : "border-border focus:border-accent"
   }`;
 }

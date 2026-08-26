@@ -8,9 +8,11 @@ import { transactionsHref } from "@/lib/transactions-href";
 
 export function CategoryDonut({
   slices,
+  compactCount = 6,
   month,
 }: {
   slices: { category: Category; amount: number }[];
+  compactCount?: number;
   month?: string;
 }) {
   const router = useRouter();
@@ -34,8 +36,13 @@ export function CategoryDonut({
   });
 
   return (
-    <div className="flex flex-col items-center gap-6 sm:flex-row">
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+    <div className="flex flex-col items-center gap-5 sm:flex-row">
+      <svg
+        width={size}
+        height={size}
+        viewBox={`0 0 ${size} ${size}`}
+        className="hidden shrink-0 sm:block"
+      >
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -90,46 +97,63 @@ export function CategoryDonut({
           {formatMoney(total)}
         </text>
       </svg>
-      <ul className="w-full space-y-2">
-        {slices.slice(0, 6).map((slice) => {
+      <ul className="w-full space-y-3">
+        {slices.slice(0, 6).map((slice, index) => {
+          const pct = total === 0 ? 0 : (slice.amount / total) * 100;
           const row = (
             <>
-              <span className="flex items-center gap-2">
-                <span
-                  className="h-2.5 w-2.5 rounded-full"
-                  style={{ background: slice.category.color }}
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <span className="flex min-w-0 items-center gap-2">
+                  <span
+                    className="h-2.5 w-2.5 shrink-0 rounded-full"
+                    style={{ background: slice.category.color }}
+                  />
+                  <span className="truncate">{slice.category.name}</span>
+                </span>
+                <span className="shrink-0 font-mono text-muted">
+                  {formatMoney(slice.amount)}
+                </span>
+              </div>
+              <div className="h-1.5 overflow-hidden rounded-full bg-surface-2">
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${pct}%`,
+                    background: slice.category.color,
+                  }}
                 />
-                {slice.category.name}
-              </span>
-              <span className="font-mono text-muted">{formatMoney(slice.amount)}</span>
+              </div>
             </>
           );
-          const className =
-            "flex items-center justify-between gap-3 rounded-lg px-1 py-0.5 text-sm";
-          if (!month) {
-            return (
-              <li key={slice.category.id} className={className}>
-                {row}
-              </li>
-            );
-          }
           return (
-            <li key={slice.category.id}>
-              <Link
-                href={transactionsHref({
-                  type: "expense",
-                  category: slice.category.id,
-                  month,
-                })}
-                className={`${className} hover:bg-surface-2`}
-              >
-                {row}
-              </Link>
+            <li
+              key={slice.category.id}
+              className={index >= compactCount ? "hidden sm:block" : undefined}
+            >
+              {month ? (
+                <Link
+                  href={transactionsHref({
+                    type: "expense",
+                    category: slice.category.id,
+                    month,
+                  })}
+                  className="block space-y-1.5 rounded-lg px-1 py-0.5 hover:bg-surface-2"
+                >
+                  {row}
+                </Link>
+              ) : (
+                <div className="space-y-1.5">{row}</div>
+              )}
             </li>
           );
         })}
         {slices.length === 0 ? (
           <li className="text-sm text-muted">No expenses this month.</li>
+        ) : null}
+        {slices.length > compactCount ? (
+          <li className="text-xs text-muted sm:hidden">
+            +{slices.length - compactCount} more
+          </li>
         ) : null}
       </ul>
     </div>

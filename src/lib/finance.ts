@@ -137,3 +137,15 @@ export function sortTransactions(transactions: Transaction[]): Transaction[] {
     return b.id.localeCompare(a.id);
   });
 }
+
+export function groupTransactionsByDate(
+  transactions: Transaction[],
+): { date: string; items: Transaction[] }[] {
+  const groups: { date: string; items: Transaction[] }[] = [];
+  for (const tx of transactions) {
+    const last = groups[groups.length - 1];
+    if (last && last.date === tx.date) last.items.push(tx);
+    else groups.push({ date: tx.date, items: [tx] });
+  }
+  return groups;
+}

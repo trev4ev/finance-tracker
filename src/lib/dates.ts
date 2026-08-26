@@ -37,6 +37,22 @@ export function formatDisplayDate(iso: string): string {
   });
 }
 
+export function formatDayHeading(iso: string): string {
+  const today = todayISO();
+  if (iso === today) return "Today";
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  if (iso === toISODate(yesterday)) return "Yesterday";
+  const [year, m, d] = iso.split("-").map(Number);
+  const nowYear = new Date().getFullYear();
+  return new Date(year, m - 1, d).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    ...(year === nowYear ? {} : { year: "numeric" }),
+  });
+}
+
 export function addMonths(month: string, delta: number): string {
   const [year, m] = month.split("-").map(Number);
   const date = new Date(year, m - 1 + delta, 1);

@@ -9,6 +9,8 @@ const nextConfig: NextConfig = {
   images: { unoptimized: true },
   trailingSlash: true,
   ...(basePath ? { basePath } : {}),
+  // The default on-screen badge covers the bottom tab bar on phones.
+  devIndicators: false,
 };
 
 export default nextConfig;

@@ -2,19 +2,21 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 import { NativeSelect } from "@/components/form-controls";
 import { Modal } from "@/components/Modal";
-import { addMonths, currentMonth, monthLabel } from "@/lib/dates";
+import { MonthSwitcher } from "@/components/MonthSwitcher";
+import { currentMonth, monthLabel } from "@/lib/dates";
 import { lookup, spentForBudget } from "@/lib/finance";
 import { formatMoney, parseAmount } from "@/lib/money";
 import { useFinance } from "@/lib/store";
+import type { Budget } from "@/lib/types";
 import { transactionsHref } from "@/lib/transactions-href";
 
 export default function BudgetsPage() {
   const { state, hydrated, upsertBudget, deleteBudget } = useFinance();
   const [month, setMonth] = useState(currentMonth());
-  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Budget | "new" | null>(null);
 
   const rows = useMemo(() => {
     return state.budgets
@@ -28,46 +30,42 @@ export default function BudgetsPage() {
           remaining: budget.amount - spent,
           pct: budget.amount === 0 ? 0 : Math.min(100, (spent / budget.amount) * 100),
         };
-      });
+      })
+      .sort((a, b) => b.pct - a.pct);
   }, [month, state]);
+
+  const summary = useMemo(() => {
+    const cap = rows.reduce((sum, row) => sum + row.budget.amount, 0);
+    const spent = rows.reduce((sum, row) => sum + row.spent, 0);
+    return {
+      cap,
+      spent,
+      remaining: cap - spent,
+      pct: cap === 0 ? 0 : Math.min(100, (spent / cap) * 100),
+    };
+  }, [rows]);
 
   if (!hydrated) {
     return <div className="h-40 animate-pulse rounded-2xl bg-surface" />;
   }
 
   return (
-    <div className="space-y-5">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+    <div className="space-y-4">
+      <header className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="hidden lg:block">
           <h2 className="text-2xl font-semibold tracking-tight">Budgets</h2>
           <p className="text-sm text-muted">Caps for each spending category.</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center rounded-xl border border-border bg-surface">
-            <button
-              type="button"
-              className="p-2 text-muted hover:text-foreground"
-              onClick={() => setMonth((prev) => addMonths(prev, -1))}
-              aria-label="Previous month"
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <span className="min-w-36 text-center text-sm font-medium">
-              {monthLabel(month)}
-            </span>
-            <button
-              type="button"
-              className="p-2 text-muted hover:text-foreground"
-              onClick={() => setMonth((prev) => addMonths(prev, 1))}
-              aria-label="Next month"
-            >
-              <ChevronRight size={18} />
-            </button>
-          </div>
+          <MonthSwitcher
+            month={month}
+            onChange={setMonth}
+            className="w-full lg:w-auto"
+          />
           <button
             type="button"
-            onClick={() => setOpen(true)}
-            className="inline-flex items-center gap-2 rounded-xl bg-accent px-3 py-2 text-sm font-medium text-background"
+            onClick={() => setEditing("new")}
+            className="hidden h-11 shrink-0 items-center gap-2 rounded-2xl bg-accent px-4 text-sm font-medium text-background lg:inline-flex"
           >
             <Plus size={16} />
             Add budget
@@ -75,33 +73,54 @@ export default function BudgetsPage() {
         </div>
       </header>
 
+      {rows.length > 0 ? (
+        <section className="rounded-2xl border border-border bg-surface p-4">
+          <p className="text-xs font-medium tracking-wide text-muted uppercase">
+            Spent this month
+          </p>
+          <p className="mt-1 font-mono text-3xl font-semibold">
+            {formatMoney(summary.spent)}
+          </p>
+          <p className="mt-1 text-sm text-muted">
+            of {formatMoney(summary.cap)} budgeted
+            {summary.remaining < 0
+              ? ` · ${formatMoney(Math.abs(summary.remaining))} over`
+              : ` · ${formatMoney(summary.remaining)} left`}
+          </p>
+          <div className="mt-3 h-2.5 overflow-hidden rounded-full bg-surface-2">
+            <div
+              className={`h-full rounded-full ${
+                summary.remaining < 0 ? "bg-expense" : "bg-accent"
+              }`}
+              style={{ width: `${summary.pct}%` }}
+            />
+          </div>
+        </section>
+      ) : null}
+
       <div className="space-y-3">
         {rows.map(({ budget, category, spent, remaining, pct }) => (
           <div
             key={budget.id}
-            className="rounded-2xl border border-border bg-surface p-4"
+            className="group relative rounded-2xl border border-border bg-surface p-3.5"
           >
-            <div className="mb-3 flex items-start justify-between gap-3">
-              <div>
-                <p className="font-medium">
-                  <Link
-                    href={transactionsHref({
-                      type: "expense",
-                      category: budget.categoryId,
-                      month,
-                    })}
-                    className="hover:text-accent"
-                  >
-                    {category?.name ?? "Category"}
-                  </Link>
-                </p>
-                <p className="text-xs text-muted">
-                  {formatMoney(spent)} of {formatMoney(budget.amount)}
-                </p>
-              </div>
-              <div className="text-right">
+            <Link
+              href={transactionsHref({
+                type: "expense",
+                category: budget.categoryId,
+                month,
+              })}
+              className="block pr-12 text-left"
+            >
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate font-medium">{category?.name ?? "Category"}</p>
+                  <p className="text-xs text-muted">
+                    {formatMoney(spent)} of {formatMoney(budget.amount)}
+                  </p>
+                </div>
                 <p
-                  className={`font-mono text-sm ${
+                  className={`shrink-0 font-mono text-sm ${
                     remaining < 0 ? "text-expense" : "text-income"
                   }`}
                 >
@@ -109,23 +128,27 @@ export default function BudgetsPage() {
                     ? `${formatMoney(Math.abs(remaining))} over`
                     : `${formatMoney(remaining)} left`}
                 </p>
-                <button
-                  type="button"
-                  className="text-xs text-muted hover:text-expense"
-                  onClick={() => deleteBudget(budget.id)}
-                >
-                  Remove
-                </button>
               </div>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-surface-2">
-              <div
-                className={`h-full rounded-full ${
-                  remaining < 0 ? "bg-expense" : "bg-accent"
-                }`}
-                style={{ width: `${pct}%` }}
-              />
-            </div>
+              <div className="h-2.5 overflow-hidden rounded-full bg-surface-2">
+                <div
+                  className={`h-full rounded-full ${
+                    remaining < 0 ? "bg-expense" : "bg-accent"
+                  }`}
+                  style={{
+                    width: `${pct}%`,
+                    background: remaining < 0 ? undefined : category?.color,
+                  }}
+                />
+              </div>
+            </Link>
+            <button
+              type="button"
+              aria-label={`Edit ${category?.name ?? "budget"}`}
+              onClick={() => setEditing(budget)}
+              className="absolute top-3 right-3 inline-flex h-11 w-11 items-center justify-center rounded-lg bg-surface-2/80 text-muted lg:bg-transparent lg:opacity-0 lg:transition-opacity lg:group-hover:opacity-100 lg:group-focus-within:opacity-100 lg:hover:bg-surface-2 lg:hover:text-foreground lg:focus-visible:opacity-100"
+            >
+              <Pencil size={16} />
+            </button>
           </div>
         ))}
         {rows.length === 0 ? (
@@ -133,17 +156,36 @@ export default function BudgetsPage() {
             No budgets for {monthLabel(month)} yet.
           </p>
         ) : null}
+        <button
+          type="button"
+          onClick={() => setEditing("new")}
+          className="flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-border text-sm text-muted active:bg-surface lg:hidden"
+        >
+          <Plus size={16} />
+          Add budget
+        </button>
       </div>
 
-      {open ? (
+      {editing ? (
         <BudgetModal
           month={month}
+          initial={editing === "new" ? undefined : editing}
           categoryOptions={state.categories.filter((c) => c.kind === "expense")}
-          onClose={() => setOpen(false)}
+          onClose={() => setEditing(null)}
           onSave={(budget) => {
-            upsertBudget(budget);
-            setOpen(false);
+            upsertBudget(
+              editing === "new" ? budget : { ...budget, id: editing.id },
+            );
+            setEditing(null);
           }}
+          onDelete={
+            editing === "new"
+              ? undefined
+              : () => {
+                  deleteBudget(editing.id);
+                  setEditing(null);
+                }
+          }
         />
       ) : null}
     </div>
@@ -152,21 +194,27 @@ export default function BudgetsPage() {
 
 function BudgetModal({
   month,
+  initial,
   categoryOptions,
   onClose,
   onSave,
+  onDelete,
 }: {
   month: string;
+  initial?: Budget;
   categoryOptions: { id: string; name: string }[];
   onClose: () => void;
   onSave: (budget: { categoryId: string; month: string; amount: number }) => void;
+  onDelete?: () => void;
 }) {
-  const [categoryId, setCategoryId] = useState(categoryOptions[0]?.id ?? "");
-  const [amount, setAmount] = useState("");
+  const [categoryId, setCategoryId] = useState(
+    initial?.categoryId ?? categoryOptions[0]?.id ?? "",
+  );
+  const [amount, setAmount] = useState(initial ? String(initial.amount) : "");
   const [error, setError] = useState("");
 
   return (
-    <Modal title="Add budget" onClose={onClose}>
+    <Modal title={initial ? "Edit budget" : "Add budget"} onClose={onClose}>
       <form
         className="space-y-4"
         onSubmit={(event) => {
@@ -188,6 +236,7 @@ function BudgetModal({
           <NativeSelect
             value={categoryId}
             onChange={(event) => setCategoryId(event.target.value)}
+            disabled={Boolean(initial)}
           >
             {categoryOptions.map((category) => (
               <option key={category.id} value={category.id}>
@@ -201,27 +250,37 @@ function BudgetModal({
           <input
             value={amount}
             onChange={(event) => setAmount(event.target.value)}
-            className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 font-mono outline-none focus:border-accent"
+            inputMode="decimal"
+            className="h-12 w-full rounded-xl border border-border bg-surface-2 px-3 font-mono text-base outline-none focus:border-accent sm:h-11 sm:text-sm"
             placeholder="400"
           />
         </label>
         {error ? <p className="text-sm text-expense">{error}</p> : null}
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl px-4 py-2 text-sm text-muted hover:bg-surface-2"
+            className="min-h-11 rounded-xl px-4 py-2 text-sm text-muted active:bg-surface-2"
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-background"
+            className="min-h-11 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-background"
           >
             Save budget
           </button>
         </div>
       </form>
+      {onDelete ? (
+        <button
+          type="button"
+          onClick={onDelete}
+          className="mt-3 min-h-11 w-full rounded-xl border border-expense/30 px-4 py-2 text-sm text-expense active:bg-expense/10"
+        >
+          Remove budget
+        </button>
+      ) : null}
     </Modal>
   );
 }

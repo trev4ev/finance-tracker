@@ -39,10 +39,10 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       <header>
-        <h2 className="text-2xl font-semibold tracking-tight">Settings</h2>
-        <p className="text-sm text-muted">
+        <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">Settings</h2>
+        <p className="mt-1 text-sm text-muted">
           {cloudEnabled
             ? user
               ? "Signed in. Transactions and balances sync to Supabase."
@@ -51,15 +51,15 @@ export default function SettingsPage() {
         </p>
       </header>
 
-      <section className="rounded-2xl border border-border bg-surface p-5">
-        <h3 className="mb-2 font-medium">Cloud account</h3>
+      <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
+        <h3 className="mb-3 font-medium">Cloud account</h3>
         {cloudEnabled ? (
           user ? (
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-muted">{user.email}</p>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <p className="truncate text-sm text-muted">{user.email}</p>
               <button
                 type="button"
-                className="rounded-xl border border-border px-4 py-2 text-sm hover:bg-surface-2"
+                className="min-h-11 rounded-xl border border-border px-4 text-sm active:bg-surface-2"
                 onClick={async () => {
                   await createClient().auth.signOut();
                 }}
@@ -70,7 +70,7 @@ export default function SettingsPage() {
           ) : (
             <Link
               href="/login"
-              className="inline-flex rounded-xl bg-accent px-4 py-2 text-sm font-medium text-background"
+              className="inline-flex min-h-11 items-center rounded-xl bg-accent px-4 text-sm font-medium text-background"
             >
               Sign in
             </Link>
@@ -83,7 +83,7 @@ export default function SettingsPage() {
         )}
       </section>
 
-      <section className="rounded-2xl border border-border bg-surface p-5">
+      <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
         <h3 className="mb-4 font-medium">Categories</h3>
         <form
           className="mb-4 flex flex-col gap-2 sm:flex-row"
@@ -102,7 +102,7 @@ export default function SettingsPage() {
             value={name}
             onChange={(event) => setName(event.target.value)}
             placeholder="New category"
-            className="flex-1 rounded-xl border border-border bg-surface-2 px-3 py-2 text-sm outline-none focus:border-accent"
+            className="h-12 flex-1 rounded-xl border border-border bg-surface-2 px-3 text-base outline-none focus:border-accent sm:h-11 sm:text-sm"
           />
           <NativeSelect
             className="w-36 shrink-0"
@@ -116,7 +116,7 @@ export default function SettingsPage() {
           </NativeSelect>
           <button
             type="submit"
-            className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-background"
+            className="min-h-11 rounded-xl bg-accent px-4 text-sm font-medium text-background"
           >
             Add
           </button>
@@ -125,19 +125,19 @@ export default function SettingsPage() {
           {state.categories.map((category) => (
             <li
               key={category.id}
-              className="flex items-center justify-between py-2 text-sm"
+              className="flex min-h-12 items-center justify-between gap-3 py-1 text-sm"
             >
-              <span className="flex items-center gap-2">
+              <span className="flex min-w-0 items-center gap-2">
                 <span
-                  className="h-2.5 w-2.5 rounded-full"
+                  className="h-2.5 w-2.5 shrink-0 rounded-full"
                   style={{ background: category.color }}
                 />
-                {category.name}
+                <span className="truncate">{category.name}</span>
                 <span className="text-xs text-muted capitalize">{category.kind}</span>
               </span>
               <button
                 type="button"
-                className="text-xs text-muted hover:text-expense"
+                className="inline-flex h-11 items-center px-2 text-sm text-muted active:text-expense"
                 onClick={() => deleteCategory(category.id)}
               >
                 Remove
@@ -147,24 +147,24 @@ export default function SettingsPage() {
         </ul>
       </section>
 
-      <section className="rounded-2xl border border-border bg-surface p-5">
+      <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
         <h3 className="mb-2 font-medium">Import & export</h3>
         <p className="mb-4 text-sm text-muted">
           CSV columns: date, description, amount, original_amount, type, account, category,
           to_account, notes.
         </p>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <button
             type="button"
             onClick={downloadCsv}
-            className="rounded-xl border border-border px-4 py-2 text-sm hover:bg-surface-2"
+            className="min-h-11 rounded-xl border border-border px-4 text-sm active:bg-surface-2"
           >
             Export CSV
           </button>
           <button
             type="button"
             onClick={() => fileRef.current?.click()}
-            className="rounded-xl border border-border px-4 py-2 text-sm hover:bg-surface-2"
+            className="min-h-11 rounded-xl border border-border px-4 text-sm active:bg-surface-2"
           >
             Import CSV
           </button>
@@ -187,17 +187,17 @@ export default function SettingsPage() {
         {notice ? <p className="mt-3 text-sm text-accent">{notice}</p> : null}
       </section>
 
-      <section className="rounded-2xl border border-border bg-surface p-5">
+      <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
         <h3 className="mb-2 font-medium">Data</h3>
         <p className="mb-4 text-sm text-muted">
           Sample data is generated locally so you can explore the app. Resetting
           cannot be undone.
         </p>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap">
           <button
             type="button"
             onClick={loadDemo}
-            className="rounded-xl border border-border px-4 py-2 text-sm hover:bg-surface-2"
+            className="min-h-11 rounded-xl border border-border px-4 text-sm active:bg-surface-2"
           >
             Reload sample data
           </button>
@@ -208,7 +208,7 @@ export default function SettingsPage() {
                 resetAll();
               }
             }}
-            className="rounded-xl border border-expense/30 px-4 py-2 text-sm text-expense hover:bg-expense/10"
+            className="min-h-11 rounded-xl border border-expense/30 px-4 text-sm text-expense active:bg-expense/10"
           >
             Clear everything
           </button>

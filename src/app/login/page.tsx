@@ -16,7 +16,7 @@ export default function LoginPage() {
 
   if (!isSupabaseConfigured()) {
     return (
-      <main className="mx-auto flex min-h-full max-w-md flex-col justify-center px-4 py-16">
+      <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-4 py-16">
         <h1 className="text-2xl font-semibold">Cloud sign-in is not configured</h1>
         <p className="mt-2 text-sm text-muted">
           Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
@@ -53,7 +53,7 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-full max-w-md flex-col justify-center px-4 py-16">
+    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-4 py-[max(4rem,env(safe-area-inset-top,0px))] pb-[max(2rem,env(safe-area-inset-bottom,0px))]">
       <p className="font-mono text-xs tracking-[0.2em] text-accent uppercase">
         Ledger
       </p>
@@ -70,9 +70,10 @@ export default function LoginPage() {
             type="email"
             required
             autoComplete="email"
+            inputMode="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            className="w-full rounded-xl border border-border bg-surface px-3 py-2 outline-none focus:border-accent"
+            className="h-12 w-full rounded-xl border border-border bg-surface px-3 text-base outline-none focus:border-accent"
           />
         </label>
         <label className="block text-sm">
@@ -84,21 +85,21 @@ export default function LoginPage() {
             autoComplete={mode === "signin" ? "current-password" : "new-password"}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className="w-full rounded-xl border border-border bg-surface px-3 py-2 outline-none focus:border-accent"
+            className="h-12 w-full rounded-xl border border-border bg-surface px-3 text-base outline-none focus:border-accent"
           />
         </label>
         {error ? <p className="text-sm text-expense">{error}</p> : null}
         <button
           type="submit"
           disabled={busy}
-          className="w-full rounded-xl bg-accent px-4 py-2 text-sm font-medium text-background disabled:opacity-60"
+          className="min-h-12 w-full rounded-xl bg-accent px-4 text-sm font-medium text-background disabled:opacity-60"
         >
           {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Sign up"}
         </button>
       </form>
       <button
         type="button"
-        className="mt-4 text-sm text-muted hover:text-foreground"
+        className="mt-4 min-h-11 text-sm text-muted active:text-foreground"
         onClick={() => {
           setMode((prev) => (prev === "signin" ? "signup" : "signin"));
           setError("");
