@@ -1,14 +1,8 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
+import { corsPreflight, json } from "../_shared/cors.ts";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function json(body: unknown, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
 
 function isAlreadyRegistered(error: { message: string; code?: string }) {
   const message = error.message.toLowerCase();
@@ -25,9 +19,10 @@ function isAlreadyRegistered(error: { message: string; code?: string }) {
 function isAllowedRedirect(redirectTo: string) {
   try {
     const url = new URL(redirectTo);
+    const path = url.pathname.replace(/\/$/, "");
     return (
       (url.protocol === "http:" || url.protocol === "https:") &&
-      url.pathname === "/auth/callback"
+      (path === "/auth/callback" || path.endsWith("/auth/callback"))
     );
   } catch {
     return false;
@@ -35,8 +30,9 @@ function isAllowedRedirect(redirectTo: string) {
 }
 
 Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return corsPreflight(req);
   if (req.method !== "POST") {
-    return json({ error: "Method not allowed" }, 405);
+    return json(req, { error: "Method not allowed" }, 405);
   }
 
   let email = "";
@@ -48,21 +44,21 @@ Deno.serve(async (req) => {
       .toLowerCase();
     redirectTo = String(body.redirectTo ?? "").trim();
   } catch {
-    return json({ error: "Invalid JSON" }, 400);
+    return json(req, { error: "Invalid JSON" }, 400);
   }
 
   if (!EMAIL_RE.test(email)) {
-    return json({ error: "Enter a valid email" }, 400);
+    return json(req, { error: "Enter a valid email" }, 400);
   }
   if (!isAllowedRedirect(redirectTo)) {
-    return json({ error: "Invalid redirect" }, 400);
+    return json(req, { error: "Invalid redirect" }, 400);
   }
 
   const url = Deno.env.get("SUPABASE_URL") ?? "";
   const serviceRole = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   const anon = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
   if (!url || !serviceRole || !anon) {
-    return json({ error: "Auth is not configured" }, 503);
+    return json(req, { error: "Auth is not configured" }, 503);
   }
 
   const admin = createClient(url, serviceRole, {
@@ -74,14 +70,14 @@ Deno.serve(async (req) => {
     email_confirm: true,
   });
   if (created.error && !isAlreadyRegistered(created.error)) {
-    return json({ error: created.error.message }, 400);
+    return json(req, { error: created.error.message }, 400);
   }
   if (created.error) {
     let page = 1;
     let existing: { id: string; email_confirmed_at?: string | null } | undefined;
     for (;;) {
       const listed = await admin.auth.admin.listUsers({ page, perPage: 200 });
-      if (listed.error) return json({ error: listed.error.message }, 400);
+      if (listed.error) return json(req, { error: listed.error.message }, 400);
       existing = listed.data.users.find(
         (user) => user.email?.toLowerCase() === email,
       );
@@ -93,7 +89,7 @@ Deno.serve(async (req) => {
       const updated = await admin.auth.admin.updateUserById(existing.id, {
         email_confirm: true,
       });
-      if (updated.error) return json({ error: updated.error.message }, 400);
+      if (updated.error) return json(req, { error: updated.error.message }, 400);
     }
   }
 
@@ -108,8 +104,8 @@ Deno.serve(async (req) => {
     },
   });
   if (otpError) {
-    return json({ error: otpError.message }, 400);
+    return json(req, { error: otpError.message }, 400);
   }
 
-  return json({ ok: true });
+  return json(req, { ok: true });
 });

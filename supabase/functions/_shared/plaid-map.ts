@@ -1,4 +1,13 @@
-import type { AccountType, CategoryKind, TransactionType } from "@/lib/types";
+type AccountType =
+  | "checking"
+  | "savings"
+  | "credit"
+  | "cash"
+  | "investment"
+  | "loan"
+  | "other";
+type CategoryKind = "income" | "expense";
+type TransactionType = "income" | "expense" | "transfer";
 
 const SUBTYPE_MAP: Record<string, AccountType> = {
   checking: "checking",

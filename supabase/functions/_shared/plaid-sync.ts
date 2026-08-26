@@ -1,8 +1,7 @@
-import type { SupabaseClient } from "@supabase/supabase-js";
-import type { AccountBase, Transaction as PlaidTransaction } from "plaid";
-import { sameMoney } from "@/lib/money";
-import { getPlaidClient } from "./client";
-import { decryptSecret } from "./crypto";
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import { decryptSecret } from "./crypto.ts";
+import { sameMoney } from "./money.ts";
+import { plaidRequest } from "./plaid-api.ts";
 import {
   colorForCategory,
   mapPlaidAccountType,
@@ -10,7 +9,35 @@ import {
   mapPlaidCategoryName,
   mapNonSpendingCategory,
   mapPlaidTransactionType,
-} from "./map";
+} from "./plaid-map.ts";
+
+type PlaidAccount = {
+  account_id: string;
+  name?: string | null;
+  official_name?: string | null;
+  type?: string | null;
+  subtype?: string | null;
+  mask?: string | null;
+  balances: {
+    current?: number | null;
+    available?: number | null;
+    iso_currency_code?: string | null;
+  };
+};
+
+type PlaidTransaction = {
+  transaction_id: string;
+  account_id: string;
+  amount: number;
+  date: string;
+  name?: string | null;
+  merchant_name?: string | null;
+  pending?: boolean;
+  personal_finance_category?: {
+    primary?: string | null;
+    detailed?: string | null;
+  } | null;
+};
 
 type CategoryRow = { id: string; name: string; kind: string };
 
@@ -77,13 +104,13 @@ export async function syncPlaidItem(
   userId: string,
   itemRow: ItemRow,
 ): Promise<{ added: number; modified: number; removed: number }> {
-  const client = getPlaidClient();
-  const accessToken = decryptSecret(itemRow.access_token_encrypted);
+  const accessToken = await decryptSecret(itemRow.access_token_encrypted);
   const asOf = new Date().toISOString();
 
-  const accountsResponse = await client.accountsGet({
-    access_token: accessToken,
-  });
+  const accountsResponse = await plaidRequest<{ accounts: PlaidAccount[] }>(
+    "/accounts/get",
+    { access_token: accessToken },
+  );
 
   const { data: categories, error: categoriesError } = await supabase
     .from("categories")
@@ -96,7 +123,7 @@ export async function syncPlaidItem(
     supabase,
     userId,
     itemRow.id,
-    accountsResponse.data.accounts,
+    accountsResponse.accounts,
     asOf,
   );
 
@@ -107,7 +134,13 @@ export async function syncPlaidItem(
   let hasMore = true;
 
   while (hasMore) {
-    const { data } = await client.transactionsSync({
+    const data = await plaidRequest<{
+      added: PlaidTransaction[];
+      modified: PlaidTransaction[];
+      removed: { transaction_id?: string }[];
+      next_cursor: string;
+      has_more: boolean;
+    }>("/transactions/sync", {
       access_token: accessToken,
       cursor,
       count: PLAID_SYNC_PAGE,
@@ -126,7 +159,7 @@ export async function syncPlaidItem(
 
     const removedIds = data.removed
       .map((item) => item.transaction_id)
-      .filter(Boolean);
+      .filter(Boolean) as string[];
     for (const ids of chunk(removedIds, WRITE_CHUNK)) {
       const { error } = await supabase
         .from("transactions")
@@ -244,7 +277,7 @@ async function upsertPlaidAccounts(
   supabase: SupabaseClient,
   userId: string,
   plaidItemId: string,
-  plaidAccounts: AccountBase[],
+  plaidAccounts: PlaidAccount[],
   asOf: string,
 ): Promise<Map<string, string>> {
   const { data: existingRows, error: existingError } = await supabase
@@ -273,8 +306,11 @@ async function upsertPlaidAccounts(
     const current = signedBalance(type, num(plaidAccount.balances.current));
     const available = num(plaidAccount.balances.available);
     const currency = plaidAccount.balances.iso_currency_code || "USD";
+    const plaidName =
+      plaidAccount.name || plaidAccount.official_name || "Linked account";
+    // `name` is the user-facing label (editable in the app). Do not overwrite it
+    // on later syncs; Plaid's names stay on `official_name`.
     const fields = {
-      name: plaidAccount.name || plaidAccount.official_name || "Linked account",
       type,
       current_balance: current,
       available_balance: available,
@@ -283,14 +319,19 @@ async function upsertPlaidAccounts(
       plaid_item_id: plaidItemId,
       plaid_account_id: plaidAccount.account_id,
       mask: plaidAccount.mask ?? null,
-      official_name: plaidAccount.official_name ?? null,
+      official_name: plaidAccount.official_name ?? plaidAccount.name ?? null,
       last_synced_at: asOf,
     };
     const existingId = existingByPlaidId.get(plaidAccount.account_id);
     if (existingId) {
       toUpdate.push({ id: existingId, user_id: userId, ...fields });
     } else {
-      toInsert.push({ user_id: userId, starting_balance: 0, ...fields });
+      toInsert.push({
+        user_id: userId,
+        starting_balance: 0,
+        name: plaidName,
+        ...fields,
+      });
       pendingSnapshots.set(plaidAccount.account_id, {
         current,
         available,
