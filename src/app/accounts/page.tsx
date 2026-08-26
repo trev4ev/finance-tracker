@@ -128,7 +128,7 @@ export default function AccountsPage() {
                 type="button"
                 aria-label={`Edit ${account.name}`}
                 onClick={() => setEditing(account)}
-                className="absolute top-3 right-3 inline-flex h-11 w-11 items-center justify-center rounded-lg text-muted opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-surface-2 hover:text-foreground focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+                className="absolute top-3 right-3 inline-flex h-11 w-11 items-center justify-center rounded-lg bg-surface-2/80 text-muted lg:bg-transparent lg:opacity-0 lg:transition-opacity lg:group-hover:opacity-100 lg:group-focus-within:opacity-100 lg:hover:bg-surface-2 lg:hover:text-foreground lg:focus-visible:opacity-100"
               >
                 <Pencil size={16} />
               </button>
