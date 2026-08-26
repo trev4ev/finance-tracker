@@ -12,11 +12,21 @@ import {
 import { useFinance } from "@/lib/store";
 
 const links = [
-  { href: "/", label: "Overview", icon: LayoutDashboard },
-  { href: "/transactions", label: "Transactions", icon: List },
-  { href: "/accounts", label: "Accounts", icon: Wallet },
-  { href: "/budgets", label: "Budgets", icon: PiggyBank },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/", label: "Overview", shortLabel: "Home", icon: LayoutDashboard },
+  {
+    href: "/transactions",
+    label: "Transactions",
+    shortLabel: "Activity",
+    icon: List,
+  },
+  { href: "/accounts", label: "Accounts", shortLabel: "Accounts", icon: Wallet },
+  { href: "/budgets", label: "Budgets", shortLabel: "Budgets", icon: PiggyBank },
+  {
+    href: "/settings",
+    label: "Settings",
+    shortLabel: "Settings",
+    icon: Settings,
+  },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
@@ -25,12 +35,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (pathname === "/login") {
     return (
-      <div className="min-h-full bg-background text-foreground">{children}</div>
+      <div className="min-h-full min-h-dvh bg-background text-foreground">
+        {children}
+      </div>
     );
   }
 
   return (
-    <div className="min-h-full bg-background text-foreground">
+    <div className="min-h-full min-h-dvh bg-background text-foreground">
       <aside className="fixed inset-y-0 left-0 hidden w-60 border-r border-border bg-surface/80 px-4 py-6 lg:block">
         <div className="mb-8 px-2">
           <p className="font-mono text-xs tracking-[0.2em] text-accent uppercase">
@@ -79,8 +91,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </aside>
 
-      <main className="pb-24 lg:ml-60 lg:pb-10">
-        <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+      <main className="pb-[calc(8.75rem+env(safe-area-inset-bottom,0px))] lg:ml-60 lg:pb-10">
+        <div className="mx-auto max-w-6xl px-4 pt-[max(1.25rem,env(safe-area-inset-top,0px))] pb-4 sm:px-6 lg:py-6">
           {error ? (
             <p className="mb-4 rounded-xl border border-expense/30 bg-expense/10 px-3 py-2 text-sm text-expense">
               {error}
@@ -90,7 +102,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
       </main>
 
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface/95 backdrop-blur lg:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface/95 pb-[env(safe-area-inset-bottom,0px)] backdrop-blur-xl lg:hidden">
         <div className="grid grid-cols-5">
           {links.map((link) => {
             const active =
@@ -102,12 +114,25 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`flex flex-col items-center gap-1 py-3 text-[11px] ${
+                aria-current={active ? "page" : undefined}
+                className={`relative flex min-h-12 flex-col items-center justify-center gap-0.5 px-1 pt-2 pb-1.5 text-[10px] font-medium ${
                   active ? "text-accent" : "text-muted"
                 }`}
               >
-                <Icon size={18} />
-                {link.label}
+                {active ? (
+                  <span
+                    aria-hidden
+                    className="absolute top-0 left-1/2 h-0.5 w-8 -translate-x-1/2 rounded-full bg-accent"
+                  />
+                ) : null}
+                <span
+                  className={`flex h-8 w-8 items-center justify-center rounded-full ${
+                    active ? "bg-accent/15" : ""
+                  }`}
+                >
+                  <Icon size={20} />
+                </span>
+                {link.shortLabel}
               </Link>
             );
           })}

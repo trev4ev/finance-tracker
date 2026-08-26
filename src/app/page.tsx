@@ -2,19 +2,16 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { ChevronRight, Plus } from "lucide-react";
 import { CashFlowChart } from "@/components/CashFlowChart";
 import { CategoryDonut } from "@/components/CategoryDonut";
+import { Fab } from "@/components/Fab";
 import { Modal } from "@/components/Modal";
+import { MonthSwitcher } from "@/components/MonthSwitcher";
 import { StatCard } from "@/components/StatCard";
 import { TransactionForm } from "@/components/TransactionForm";
-import {
-  addMonths,
-  currentMonth,
-  formatDisplayDate,
-  lastNMonths,
-  monthLabel,
-} from "@/lib/dates";
+import { TransactionRow } from "@/components/TransactionRow";
+import { currentMonth, lastNMonths, monthLabel } from "@/lib/dates";
 import {
   accountBalance,
   lookup,
@@ -23,13 +20,15 @@ import {
   sortTransactions,
   spendingByCategory,
 } from "@/lib/finance";
-import { formatMoney } from "@/lib/money";
+import { formatMoney, formatSignedMoney } from "@/lib/money";
 import { useFinance } from "@/lib/store";
+import type { Transaction } from "@/lib/types";
 
 export default function OverviewPage() {
-  const { state, hydrated, addTransaction } = useFinance();
+  const { state, hydrated, addTransaction, updateTransaction, deleteTransaction } =
+    useFinance();
   const [month, setMonth] = useState(currentMonth());
-  const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState<Transaction | "new" | null>(null);
 
   const totals = useMemo(
     () => monthTotals(state.transactions, month),
@@ -49,7 +48,7 @@ export default function OverviewPage() {
     [month, state.transactions],
   );
   const recent = useMemo(
-    () => sortTransactions(state.transactions).slice(0, 8),
+    () => sortTransactions(state.transactions).slice(0, 6),
     [state.transactions],
   );
   const accounts = useMemo(
@@ -60,44 +59,30 @@ export default function OverviewPage() {
       })),
     [state],
   );
+  const flowTotal = totals.income + totals.expenses;
+  const incomeShare = flowTotal === 0 ? 50 : (totals.income / flowTotal) * 100;
 
   if (!hydrated) {
     return <div className="h-40 animate-pulse rounded-2xl bg-surface" />;
   }
 
   return (
-    <div className="space-y-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+    <div className="space-y-5 lg:space-y-6">
+      <header className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="hidden lg:block">
           <p className="text-sm text-muted">Personal ledger</p>
           <h2 className="text-2xl font-semibold tracking-tight">Overview</h2>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex items-center rounded-xl border border-border bg-surface">
-            <button
-              type="button"
-              className="p-2 text-muted hover:text-foreground"
-              onClick={() => setMonth((prev) => addMonths(prev, -1))}
-              aria-label="Previous month"
-            >
-              <ChevronLeft size={18} />
-            </button>
-            <span className="min-w-36 text-center text-sm font-medium">
-              {monthLabel(month)}
-            </span>
-            <button
-              type="button"
-              className="p-2 text-muted hover:text-foreground"
-              onClick={() => setMonth((prev) => addMonths(prev, 1))}
-              aria-label="Next month"
-            >
-              <ChevronRight size={18} />
-            </button>
-          </div>
+          <MonthSwitcher
+            month={month}
+            onChange={setMonth}
+            className="w-full lg:w-auto"
+          />
           <button
             type="button"
-            onClick={() => setOpen(true)}
-            className="inline-flex items-center gap-2 rounded-xl bg-accent px-3 py-2 text-sm font-medium text-background"
+            onClick={() => setEditing("new")}
+            className="hidden h-11 shrink-0 items-center gap-2 rounded-2xl bg-accent px-4 text-sm font-medium text-background lg:inline-flex"
           >
             <Plus size={16} />
             Add
@@ -105,7 +90,45 @@ export default function OverviewPage() {
         </div>
       </header>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="rounded-2xl border border-border bg-surface p-4 lg:hidden">
+        <p className="text-xs font-medium tracking-wide text-muted uppercase">
+          Net this month
+        </p>
+        <p
+          className={`mt-1 font-mono text-3xl font-semibold ${
+            totals.net < 0 ? "text-expense" : "text-foreground"
+          }`}
+        >
+          {formatMoney(totals.net)}
+        </p>
+        <p className="mt-1 text-xs text-muted">
+          {totals.net >= 0 ? "In the black" : "Spending more than you earn"}
+        </p>
+        <div className="mt-3 flex h-1.5 overflow-hidden rounded-full bg-surface-2">
+          <div className="bg-income" style={{ width: `${incomeShare}%` }} />
+          <div className="bg-expense" style={{ width: `${100 - incomeShare}%` }} />
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="rounded-xl bg-surface-2 px-3 py-2.5">
+            <p className="text-[11px] text-muted">In</p>
+            <p className="font-mono text-sm text-income">
+              {formatSignedMoney(totals.income)}
+            </p>
+          </div>
+          <div className="rounded-xl bg-surface-2 px-3 py-2.5">
+            <p className="text-[11px] text-muted">Out</p>
+            <p className="font-mono text-sm text-expense">
+              {formatSignedMoney(-totals.expenses)}
+            </p>
+          </div>
+        </div>
+        <div className="mt-3 flex items-center justify-between border-t border-border/70 pt-3 text-sm">
+          <span className="text-muted">Net worth</span>
+          <span className="font-mono font-medium">{formatMoney(worth)}</span>
+        </div>
+      </section>
+
+      <section className="hidden gap-3 lg:grid lg:grid-cols-4">
         <StatCard
           label="Income"
           value={totals.income}
@@ -126,12 +149,51 @@ export default function OverviewPage() {
         <StatCard label="Net worth" value={worth} hint="All accounts combined" />
       </section>
 
+      <section className="lg:hidden">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 className="font-medium">Accounts</h3>
+          <Link
+            href="/accounts"
+            className="inline-flex items-center text-sm text-accent"
+          >
+            Manage
+            <ChevronRight size={16} />
+          </Link>
+        </div>
+        <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4">
+          {accounts.map(({ account, balance }) => (
+            <Link
+              key={account.id}
+              href="/accounts"
+              className="w-[min(78%,18rem)] shrink-0 snap-start rounded-2xl border border-border bg-surface p-4 active:scale-[0.99]"
+            >
+              <p className="text-[11px] tracking-wide text-muted uppercase">
+                {account.type}
+                {account.source === "plaid" ? " · linked" : ""}
+              </p>
+              <p className="mt-1 truncate font-medium">{account.name}</p>
+              <p
+                className={`mt-3 font-mono text-lg ${
+                  account.type === "credit" || balance < 0
+                    ? "text-expense"
+                    : "text-foreground"
+                }`}
+              >
+                {account.type === "credit" && balance < 0
+                  ? `${formatMoney(Math.abs(balance))} owed`
+                  : formatMoney(balance)}
+              </p>
+            </Link>
+          ))}
+        </div>
+      </section>
+
       <section className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-border bg-surface p-5">
+        <div className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
           <h3 className="mb-4 font-medium">Spending by category</h3>
           <CategoryDonut slices={slices} />
         </div>
-        <div className="rounded-2xl border border-border bg-surface p-5">
+        <div className="hidden rounded-2xl border border-border bg-surface p-5 lg:block">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="font-medium">Cash flow</h3>
             <p className="text-xs text-muted">
@@ -144,7 +206,7 @@ export default function OverviewPage() {
       </section>
 
       <section className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-border bg-surface p-5">
+        <div className="hidden rounded-2xl border border-border bg-surface p-5 lg:block">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="font-medium">Accounts</h3>
             <Link href="/accounts" className="text-sm text-accent">
@@ -177,61 +239,75 @@ export default function OverviewPage() {
           </ul>
         </div>
 
-        <div className="rounded-2xl border border-border bg-surface p-5">
-          <div className="mb-4 flex items-center justify-between">
+        <div className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
+          <div className="mb-2 flex items-center justify-between">
             <h3 className="font-medium">Recent activity</h3>
-            <Link href="/transactions" className="text-sm text-accent">
+            <Link
+              href="/transactions"
+              className="inline-flex items-center text-sm text-accent"
+            >
               View all
+              <ChevronRight size={16} className="lg:hidden" />
             </Link>
           </div>
-          <ul className="space-y-3">
-            {recent.map((tx) => {
-              const category = lookup(state.categories, tx.categoryId);
-              const signed =
-                tx.type === "income"
-                  ? tx.amount
-                  : tx.type === "expense"
-                    ? -tx.amount
-                    : 0;
-              return (
-                <li key={tx.id} className="flex items-center justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{tx.description}</p>
-                    <p className="text-xs text-muted">
-                      {formatDisplayDate(tx.date)}
-                      {category ? ` · ${category.name}` : ""}
-                    </p>
-                  </div>
-                  <p
-                    className={`font-mono text-sm ${
-                      tx.type === "income"
-                        ? "text-income"
-                        : tx.type === "expense"
-                          ? "text-expense"
-                          : "text-muted"
-                    }`}
-                  >
-                    {tx.type === "transfer"
-                      ? formatMoney(tx.amount)
-                      : `${signed > 0 ? "+" : "-"}${formatMoney(tx.amount)}`}
-                  </p>
-                </li>
-              );
-            })}
+          <ul className="-mx-2 divide-y divide-border/70">
+            {recent.map((tx) => (
+              <li key={tx.id}>
+                <TransactionRow
+                  tx={tx}
+                  category={lookup(state.categories, tx.categoryId)}
+                  account={lookup(state.accounts, tx.accountId)}
+                  toAccount={lookup(state.accounts, tx.toAccountId)}
+                  onClick={() => setEditing(tx)}
+                />
+              </li>
+            ))}
           </ul>
         </div>
       </section>
 
-      {open ? (
-        <Modal title="Add transaction" onClose={() => setOpen(false)}>
+      <section className="rounded-2xl border border-border bg-surface p-4 lg:hidden">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="font-medium">Cash flow</h3>
+          <p className="text-xs text-muted">
+            <span className="mr-2 text-income">● In</span>
+            <span className="text-expense">● Out</span>
+          </p>
+        </div>
+        <CashFlowChart series={cashflow} />
+      </section>
+
+      {editing ? null : (
+        <Fab label="Add transaction" onClick={() => setEditing("new")} />
+      )}
+
+      {editing ? (
+        <Modal
+          title={editing === "new" ? "Add transaction" : "Edit transaction"}
+          onClose={() => setEditing(null)}
+        >
           <TransactionForm
             state={state}
-            onCancel={() => setOpen(false)}
+            initial={editing === "new" ? undefined : editing}
+            onCancel={() => setEditing(null)}
             onSubmit={(tx) => {
-              addTransaction(tx);
-              setOpen(false);
+              if (editing === "new") addTransaction(tx);
+              else updateTransaction({ ...editing, ...tx, id: editing.id });
+              setEditing(null);
             }}
           />
+          {editing !== "new" ? (
+            <button
+              type="button"
+              className="mt-3 min-h-11 w-full rounded-xl border border-expense/30 px-4 py-2 text-sm text-expense active:bg-expense/10"
+              onClick={() => {
+                deleteTransaction(editing.id);
+                setEditing(null);
+              }}
+            >
+              Delete transaction
+            </button>
+          ) : null}
         </Modal>
       ) : null}
     </div>

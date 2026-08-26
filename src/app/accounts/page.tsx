@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, RefreshCw } from "lucide-react";
+import { ChevronRight, Plus, RefreshCw } from "lucide-react";
 import { Modal } from "@/components/Modal";
 import { PlaidLinkButton } from "@/components/PlaidLinkButton";
 import { ACCOUNT_TYPES, type Account } from "@/lib/types";
@@ -30,46 +30,48 @@ export default function AccountsPage() {
   }
 
   return (
-    <div className="space-y-5">
-      <header className="flex items-center justify-between gap-3">
+    <div className="space-y-4">
+      <header className="space-y-3">
         <div>
-          <h2 className="text-2xl font-semibold tracking-tight">Accounts</h2>
-          <p className="text-sm text-muted">
+          <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">
+            Accounts
+          </h2>
+          <p className="hidden text-sm text-muted sm:block">
             Starting balances plus every income, expense, and transfer.
           </p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setEditing("new")}
-          className="inline-flex items-center gap-2 rounded-xl bg-accent px-3 py-2 text-sm font-medium text-background"
-        >
-          <Plus size={16} />
-          Add account
-        </button>
-        {cloudEnabled && user ? (
-          <>
-            <PlaidLinkButton onLinked={() => refresh()} />
-            {state.plaidItems.length > 0 ? (
-              <button
-                type="button"
-                disabled={syncing}
-                onClick={() => void syncPlaid()}
-                className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm hover:bg-surface-2 disabled:opacity-50"
-              >
-                <RefreshCw size={16} />
-                {syncing ? "Syncing…" : "Sync banks"}
-              </button>
-            ) : null}
-          </>
-        ) : cloudEnabled ? (
-          <Link
-            href="/login"
-            className="rounded-xl border border-border px-3 py-2 text-sm hover:bg-surface-2"
+        <div className="no-scrollbar flex gap-2 overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => setEditing("new")}
+            className="inline-flex h-11 shrink-0 items-center gap-2 rounded-2xl bg-accent px-4 text-sm font-medium text-background"
           >
-            Sign in to link a bank
-          </Link>
-        ) : null}
+            <Plus size={16} />
+            Add account
+          </button>
+          {cloudEnabled && user ? (
+            <>
+              <PlaidLinkButton onLinked={() => refresh()} />
+              {state.plaidItems.length > 0 ? (
+                <button
+                  type="button"
+                  disabled={syncing}
+                  onClick={() => void syncPlaid()}
+                  className="inline-flex h-11 shrink-0 items-center gap-2 rounded-2xl border border-border px-4 text-sm active:bg-surface-2 disabled:opacity-50"
+                >
+                  <RefreshCw size={16} />
+                  {syncing ? "Syncing…" : "Sync banks"}
+                </button>
+              ) : null}
+            </>
+          ) : cloudEnabled ? (
+            <Link
+              href="/login"
+              className="inline-flex h-11 shrink-0 items-center rounded-2xl border border-border px-4 text-sm active:bg-surface-2"
+            >
+              Sign in to link a bank
+            </Link>
+          ) : null}
         </div>
       </header>
 
@@ -81,12 +83,15 @@ export default function AccountsPage() {
               key={account.id}
               type="button"
               onClick={() => setEditing(account)}
-              className="rounded-2xl border border-border bg-surface p-5 text-left hover:border-accent/40"
+              className="rounded-2xl border border-border bg-surface p-4 text-left active:scale-[0.99] sm:p-5"
             >
-              <p className="text-xs tracking-wide text-muted uppercase">
-                {account.type}
-                {account.source === "plaid" ? " · linked" : ""}
-              </p>
+              <div className="flex items-start justify-between gap-3">
+                <p className="text-[11px] tracking-wide text-muted uppercase">
+                  {account.type}
+                  {account.source === "plaid" ? " · linked" : ""}
+                </p>
+                <ChevronRight size={16} className="mt-0.5 text-muted" aria-hidden />
+              </div>
               <h3 className="mt-1 text-lg font-medium">{account.name}</h3>
               {account.institutionName || account.mask ? (
                 <p className="text-xs text-muted">
@@ -108,7 +113,13 @@ export default function AccountsPage() {
           );
         })}
         {state.accounts.length === 0 ? (
-          <p className="text-sm text-muted">Add a checking or savings account to start.</p>
+          <button
+            type="button"
+            onClick={() => setEditing("new")}
+            className="rounded-2xl border border-dashed border-border p-8 text-sm text-muted"
+          >
+            Add a checking or savings account to start.
+          </button>
         ) : null}
       </div>
 
@@ -180,7 +191,7 @@ function AccountModal({
           <input
             value={name}
             onChange={(event) => setName(event.target.value)}
-            className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 outline-none focus:border-accent"
+            className="h-12 w-full rounded-xl border border-border bg-surface-2 px-3 text-base outline-none focus:border-accent sm:h-11 sm:text-sm"
           />
         </label>
         <label className="block text-sm">
@@ -190,7 +201,7 @@ function AccountModal({
             onChange={(event) =>
               setType(event.target.value as Account["type"])
             }
-            className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 outline-none focus:border-accent"
+            className="h-12 w-full rounded-xl border border-border bg-surface-2 px-3 text-base outline-none focus:border-accent sm:h-11 sm:text-sm"
           >
             {ACCOUNT_TYPES.map((item) => (
               <option key={item.value} value={item.value}>
@@ -205,29 +216,30 @@ function AccountModal({
             renaming it here does not change the institution.
           </p>
         ) : (
-        <label className="block text-sm">
-          <span className="mb-1 block text-muted">
-            Starting balance {type === "credit" ? "(negative if you owe)" : ""}
-          </span>
-          <input
-            value={starting}
-            onChange={(event) => setStarting(event.target.value)}
-            className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 font-mono outline-none focus:border-accent"
-          />
-        </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-muted">
+              Starting balance {type === "credit" ? "(negative if you owe)" : ""}
+            </span>
+            <input
+              value={starting}
+              onChange={(event) => setStarting(event.target.value)}
+              inputMode="decimal"
+              className="h-12 w-full rounded-xl border border-border bg-surface-2 px-3 font-mono text-base outline-none focus:border-accent sm:h-11 sm:text-sm"
+            />
+          </label>
         )}
         {error ? <p className="text-sm text-expense">{error}</p> : null}
-        <div className="flex justify-end gap-2">
+        <div className="flex flex-col-reverse gap-2 pt-1 sm:flex-row sm:justify-end">
           <button
             type="button"
             onClick={onClose}
-            className="rounded-xl px-4 py-2 text-sm text-muted hover:bg-surface-2"
+            className="min-h-11 rounded-xl px-4 py-2 text-sm text-muted active:bg-surface-2"
           >
             Cancel
           </button>
           <button
             type="submit"
-            className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-background"
+            className="min-h-11 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-background"
           >
             Save
           </button>
@@ -237,7 +249,7 @@ function AccountModal({
         <button
           type="button"
           onClick={onDelete}
-          className="mt-3 w-full rounded-xl border border-expense/30 px-4 py-2 text-sm text-expense hover:bg-expense/10"
+          className="mt-3 min-h-11 w-full rounded-xl border border-expense/30 px-4 py-2 text-sm text-expense active:bg-expense/10"
         >
           Delete account
         </button>

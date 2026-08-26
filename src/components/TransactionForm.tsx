@@ -103,10 +103,10 @@ export function TransactionForm({
             key={type}
             type="button"
             onClick={() => setForm((prev) => ({ ...prev, type, categoryId: "" }))}
-            className={`rounded-xl border px-3 py-2 text-sm capitalize ${
+            className={`min-h-12 rounded-xl border px-2 text-sm capitalize ${
               form.type === type
                 ? "border-accent bg-accent/10 text-accent"
-                : "border-border text-muted hover:bg-surface-2"
+                : "border-border text-muted active:bg-surface-2"
             }`}
           >
             {type}
@@ -121,7 +121,7 @@ export function TransactionForm({
           onChange={(event) =>
             setForm((prev) => ({ ...prev, description: event.target.value }))
           }
-          className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 outline-none focus:border-accent"
+          className="h-12 w-full rounded-xl border border-border bg-surface-2 px-3 text-base outline-none focus:border-accent sm:h-11 sm:text-sm"
           placeholder="Coffee, payroll, rent…"
         />
       </label>
@@ -135,7 +135,7 @@ export function TransactionForm({
               setForm((prev) => ({ ...prev, amount: event.target.value }))
             }
             inputMode="decimal"
-            className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 font-mono outline-none focus:border-accent"
+            className="h-12 w-full rounded-xl border border-border bg-surface-2 px-3 font-mono text-base outline-none focus:border-accent sm:h-11 sm:text-sm"
             placeholder="0.00"
           />
         </label>
@@ -147,7 +147,7 @@ export function TransactionForm({
             onChange={(event) =>
               setForm((prev) => ({ ...prev, date: event.target.value }))
             }
-            className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 outline-none focus:border-accent"
+            className="h-12 w-full rounded-xl border border-border bg-surface-2 px-3 text-base outline-none focus:border-accent sm:h-11 sm:text-sm"
           />
         </label>
       </div>
@@ -161,7 +161,7 @@ export function TransactionForm({
           onChange={(event) =>
             setForm((prev) => ({ ...prev, accountId: event.target.value }))
           }
-          className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 outline-none focus:border-accent"
+          className="h-12 w-full rounded-xl border border-border bg-surface-2 px-3 text-base outline-none focus:border-accent sm:h-11 sm:text-sm"
         >
           {state.accounts.map((account) => (
             <option key={account.id} value={account.id}>
@@ -179,7 +179,7 @@ export function TransactionForm({
             onChange={(event) =>
               setForm((prev) => ({ ...prev, toAccountId: event.target.value }))
             }
-            className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 outline-none focus:border-accent"
+            className="h-12 w-full rounded-xl border border-border bg-surface-2 px-3 text-base outline-none focus:border-accent sm:h-11 sm:text-sm"
           >
             <option value="">Select account</option>
             {state.accounts.map((account) => (
@@ -197,7 +197,7 @@ export function TransactionForm({
             onChange={(event) =>
               setForm((prev) => ({ ...prev, categoryId: event.target.value }))
             }
-            className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 outline-none focus:border-accent"
+            className="h-12 w-full rounded-xl border border-border bg-surface-2 px-3 text-base outline-none focus:border-accent sm:h-11 sm:text-sm"
           >
             <option value="">Uncategorized</option>
             {categories.map((category) => (
@@ -217,23 +217,23 @@ export function TransactionForm({
             setForm((prev) => ({ ...prev, notes: event.target.value }))
           }
           rows={2}
-          className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 outline-none focus:border-accent"
+          className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-base outline-none focus:border-accent sm:text-sm"
         />
       </label>
 
       {error ? <p className="text-sm text-expense">{error}</p> : null}
 
-      <div className="flex justify-end gap-2 pt-2">
+      <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-xl px-4 py-2 text-sm text-muted hover:bg-surface-2"
+          className="min-h-11 rounded-xl px-4 py-2 text-sm text-muted active:bg-surface-2"
         >
           Cancel
         </button>
         <button
           type="submit"
-          className="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-background"
+          className="min-h-11 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-background"
         >
           {initial ? "Save changes" : "Add transaction"}
         </button>

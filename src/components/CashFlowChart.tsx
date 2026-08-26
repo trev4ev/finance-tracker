@@ -14,17 +14,17 @@ export function CashFlowChart({
   );
 
   return (
-    <div className="flex h-56 items-end gap-3">
+    <div className="flex h-40 items-end gap-2 sm:h-56 sm:gap-3">
       {series.map((row) => (
         <div key={row.month} className="flex flex-1 flex-col items-center gap-2">
-          <div className="flex h-44 w-full items-end justify-center gap-1">
+          <div className="flex h-32 w-full items-end justify-center gap-1 sm:h-44">
             <div
-              className="w-3 rounded-t bg-income/80 sm:w-4"
+              className="w-3.5 rounded-t bg-income/80 sm:w-4"
               style={{ height: `${(row.income / max) * 100}%` }}
               title={`Income ${formatMoney(row.income)}`}
             />
             <div
-              className="w-3 rounded-t bg-expense/80 sm:w-4"
+              className="w-3.5 rounded-t bg-expense/80 sm:w-4"
               style={{ height: `${(row.expenses / max) * 100}%` }}
               title={`Expenses ${formatMoney(row.expenses)}`}
             />

@@ -87,12 +87,12 @@ export function PlaidLinkButton({
   }
 
   return (
-    <div className="space-y-1">
+    <div className="shrink-0 space-y-1">
       <button
         type="button"
         disabled={disabled || busy}
         onClick={() => void start()}
-        className="inline-flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm hover:bg-surface-2 disabled:opacity-50"
+        className="inline-flex h-11 shrink-0 items-center gap-2 rounded-2xl border border-border px-4 text-sm active:bg-surface-2 disabled:opacity-50"
       >
         <Landmark size={16} />
         {busy ? "Connecting…" : "Link bank"}
