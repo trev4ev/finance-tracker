@@ -99,6 +99,18 @@ export function createDemoState(): FinanceState {
       kind: "expense" as const,
       color: "#a3e635",
     },
+    {
+      id: "cat-invest",
+      name: "Investments",
+      kind: "expense" as const,
+      color: "#38bdf8",
+    },
+    {
+      id: "cat-transfers",
+      name: "Transfers",
+      kind: "expense" as const,
+      color: "#94a3b8",
+    },
   ];
 
   const rand = mulberry32(20260824);
@@ -307,7 +319,7 @@ export function createDemoState(): FinanceState {
       amount: roundMoney(420 + rand() * 280),
       type: "transfer",
       accountId: "acc-checking",
-      categoryId: null,
+      categoryId: "cat-transfers",
       toAccountId: "acc-credit",
       notes: "",
     });
@@ -319,7 +331,7 @@ export function createDemoState(): FinanceState {
       amount: 800,
       type: "transfer",
       accountId: "acc-checking",
-      categoryId: null,
+      categoryId: "cat-transfers",
       toAccountId: "acc-savings",
       notes: "Monthly auto-save",
     });

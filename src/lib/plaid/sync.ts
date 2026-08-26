@@ -1,11 +1,14 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { AccountBase, Transaction as PlaidTransaction } from "plaid";
+import { sameMoney } from "@/lib/money";
 import { getPlaidClient } from "./client";
 import { decryptSecret } from "./crypto";
 import {
+  colorForCategory,
   mapPlaidAccountType,
   mapPlaidAmount,
   mapPlaidCategoryName,
+  mapNonSpendingCategory,
   mapPlaidTransactionType,
 } from "./map";
 
@@ -17,6 +20,38 @@ type ItemRow = {
   transactions_cursor: string | null;
 };
 
+type ExistingTransaction = {
+  id: string;
+  category_id: string | null;
+  type: string;
+  amount: number;
+  original_amount: number;
+  notes: string;
+  to_account_id: string | null;
+};
+
+type TransactionWrite = {
+  id?: string;
+  user_id: string;
+  date: string;
+  description: string;
+  amount: number;
+  original_amount: number;
+  type: string;
+  account_id: string;
+  category_id: string | null;
+  to_account_id: string | null;
+  notes: string;
+  source: "plaid";
+  plaid_transaction_id: string;
+  pending: boolean;
+  merchant_name: string | null;
+  plaid_category: string | null;
+};
+
+const WRITE_CHUNK = 100;
+const PLAID_SYNC_PAGE = 500;
+
 function num(value: number | string | null | undefined): number | null {
   if (value === null || value === undefined) return null;
   const parsed = Number(value);
@@ -27,6 +62,14 @@ function signedBalance(type: string, current: number | null): number | null {
   if (current === null) return null;
   if (type === "credit" || type === "loan") return -Math.abs(current);
   return current;
+}
+
+function chunk<T>(items: T[], size: number): T[][] {
+  const batches: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    batches.push(items.slice(i, i + size));
+  }
+  return batches;
 }
 
 export async function syncPlaidItem(
@@ -42,15 +85,20 @@ export async function syncPlaidItem(
     access_token: accessToken,
   });
 
-  const { data: categories } = await supabase
+  const { data: categories, error: categoriesError } = await supabase
     .from("categories")
     .select("id, name, kind")
     .eq("user_id", userId);
+  if (categoriesError) throw categoriesError;
   const categoryRows = (categories ?? []) as CategoryRow[];
 
-  for (const plaidAccount of accountsResponse.data.accounts) {
-    await upsertPlaidAccount(supabase, userId, itemRow.id, plaidAccount, asOf);
-  }
+  const accountByPlaidId = await upsertPlaidAccounts(
+    supabase,
+    userId,
+    itemRow.id,
+    accountsResponse.data.accounts,
+    asOf,
+  );
 
   let cursor = itemRow.transactions_cursor ?? undefined;
   let added = 0;
@@ -62,34 +110,38 @@ export async function syncPlaidItem(
     const { data } = await client.transactionsSync({
       access_token: accessToken,
       cursor,
+      count: PLAID_SYNC_PAGE,
       options: { include_personal_finance_category: true },
     });
 
-    for (const tx of data.added) {
-      await upsertPlaidTransaction(supabase, userId, tx, categoryRows);
-      added += 1;
-    }
-    for (const tx of data.modified) {
-      await upsertPlaidTransaction(supabase, userId, tx, categoryRows);
-      modified += 1;
-    }
+    await applyPlaidTransactions(
+      supabase,
+      userId,
+      [...data.added, ...data.modified],
+      accountByPlaidId,
+      categoryRows,
+    );
+    added += data.added.length;
+    modified += data.modified.length;
+
     const removedIds = data.removed
       .map((item) => item.transaction_id)
       .filter(Boolean);
-    if (removedIds.length > 0) {
-      await supabase
+    for (const ids of chunk(removedIds, WRITE_CHUNK)) {
+      const { error } = await supabase
         .from("transactions")
         .delete()
         .eq("user_id", userId)
-        .in("plaid_transaction_id", removedIds);
-      removed += removedIds.length;
+        .in("plaid_transaction_id", ids);
+      if (error) throw error;
     }
+    removed += removedIds.length;
 
     hasMore = data.has_more;
     cursor = data.next_cursor;
   }
 
-  await supabase
+  const { error: itemError } = await supabase
     .from("plaid_items")
     .update({
       transactions_cursor: cursor ?? null,
@@ -99,12 +151,14 @@ export async function syncPlaidItem(
     })
     .eq("id", itemRow.id)
     .eq("user_id", userId);
+  if (itemError) throw itemError;
 
-  await supabase
+  const { error: accountSyncError } = await supabase
     .from("accounts")
     .update({ last_synced_at: asOf })
     .eq("plaid_item_id", itemRow.id)
     .eq("user_id", userId);
+  if (accountSyncError) throw accountSyncError;
 
   return { added, modified, removed };
 }
@@ -141,129 +195,304 @@ export async function syncAllPlaidItems(
   return { added, modified, removed, itemCount: items?.length ?? 0 };
 }
 
-async function upsertPlaidAccount(
+function findCategoryId(
+  categories: CategoryRow[],
+  name: string,
+  kind: string,
+): string | undefined {
+  return categories.find(
+    (category) =>
+      category.name.toLowerCase() === name.toLowerCase() &&
+      category.kind === kind,
+  )?.id;
+}
+
+async function ensureCategories(
+  supabase: SupabaseClient,
+  userId: string,
+  categories: CategoryRow[],
+  needed: { name: string; kind: string }[],
+) {
+  const missing = new Map<string, { name: string; kind: string }>();
+  for (const item of needed) {
+    if (findCategoryId(categories, item.name, item.kind)) continue;
+    missing.set(`${item.kind}:${item.name.toLowerCase()}`, item);
+  }
+  if (missing.size === 0) return;
+
+  const rows = [...missing.values()].map((item) => ({
+    user_id: userId,
+    name: item.name,
+    kind: item.kind,
+    color: colorForCategory(item.name),
+  }));
+  const { error } = await supabase.from("categories").upsert(rows, {
+    onConflict: "user_id,name,kind",
+    ignoreDuplicates: true,
+  });
+  if (error) throw error;
+
+  const { data, error: loadError } = await supabase
+    .from("categories")
+    .select("id, name, kind")
+    .eq("user_id", userId);
+  if (loadError) throw loadError;
+  categories.splice(0, categories.length, ...((data ?? []) as CategoryRow[]));
+}
+
+async function upsertPlaidAccounts(
   supabase: SupabaseClient,
   userId: string,
   plaidItemId: string,
-  plaidAccount: AccountBase,
+  plaidAccounts: AccountBase[],
   asOf: string,
-) {
-  const type = mapPlaidAccountType(plaidAccount.type, plaidAccount.subtype);
-  const current = signedBalance(type, num(plaidAccount.balances.current));
-  const available = num(plaidAccount.balances.available);
-
-  const { data: existing } = await supabase
+): Promise<Map<string, string>> {
+  const { data: existingRows, error: existingError } = await supabase
     .from("accounts")
-    .select("id")
+    .select("id, plaid_account_id")
     .eq("user_id", userId)
-    .eq("plaid_account_id", plaidAccount.account_id)
-    .maybeSingle();
+    .eq("plaid_item_id", plaidItemId);
+  if (existingError) throw existingError;
 
-  const fields = {
-    name: plaidAccount.name || plaidAccount.official_name || "Linked account",
-    type,
-    current_balance: current,
-    available_balance: available,
-    currency: plaidAccount.balances.iso_currency_code || "USD",
-    source: "plaid",
-    plaid_item_id: plaidItemId,
-    plaid_account_id: plaidAccount.account_id,
-    mask: plaidAccount.mask ?? null,
-    official_name: plaidAccount.official_name ?? null,
-    last_synced_at: asOf,
-  };
+  const existingByPlaidId = new Map(
+    (existingRows ?? [])
+      .filter((row) => row.plaid_account_id)
+      .map((row) => [row.plaid_account_id as string, row.id as string]),
+  );
 
-  let accountId = existing?.id as string | undefined;
-  if (accountId) {
-    const { error } = await supabase.from("accounts").update(fields).eq("id", accountId);
-    if (error) throw error;
-  } else {
-    const { data: inserted, error } = await supabase
-      .from("accounts")
-      .insert({ user_id: userId, starting_balance: 0, ...fields })
-      .select("id")
-      .single();
-    if (error) throw error;
-    accountId = inserted.id as string;
+  const toInsert: Record<string, unknown>[] = [];
+  const toUpdate: Record<string, unknown>[] = [];
+  const snapshots: Record<string, unknown>[] = [];
+  const pendingSnapshots = new Map<
+    string,
+    { current: number | null; available: number | null; currency: string }
+  >();
+
+  for (const plaidAccount of plaidAccounts) {
+    const type = mapPlaidAccountType(plaidAccount.type, plaidAccount.subtype);
+    const current = signedBalance(type, num(plaidAccount.balances.current));
+    const available = num(plaidAccount.balances.available);
+    const currency = plaidAccount.balances.iso_currency_code || "USD";
+    const fields = {
+      name: plaidAccount.name || plaidAccount.official_name || "Linked account",
+      type,
+      current_balance: current,
+      available_balance: available,
+      currency,
+      source: "plaid",
+      plaid_item_id: plaidItemId,
+      plaid_account_id: plaidAccount.account_id,
+      mask: plaidAccount.mask ?? null,
+      official_name: plaidAccount.official_name ?? null,
+      last_synced_at: asOf,
+    };
+    const existingId = existingByPlaidId.get(plaidAccount.account_id);
+    if (existingId) {
+      toUpdate.push({ id: existingId, user_id: userId, ...fields });
+    } else {
+      toInsert.push({ user_id: userId, starting_balance: 0, ...fields });
+      pendingSnapshots.set(plaidAccount.account_id, {
+        current,
+        available,
+        currency,
+      });
+    }
+    if (existingId) {
+      snapshots.push({
+        user_id: userId,
+        account_id: existingId,
+        current,
+        available,
+        iso_currency_code: currency,
+        source: "plaid",
+        as_of: asOf,
+      });
+    }
   }
 
-  const { error: snapshotError } = await supabase.from("account_balances").insert({
-    user_id: userId,
-    account_id: accountId,
-    current,
-    available,
-    iso_currency_code: plaidAccount.balances.iso_currency_code || "USD",
-    source: "plaid",
-    as_of: asOf,
-  });
-  if (snapshotError) throw snapshotError;
+  if (toInsert.length > 0) {
+    const { data: inserted, error } = await supabase
+      .from("accounts")
+      .insert(toInsert)
+      .select("id, plaid_account_id");
+    if (error) throw error;
+    for (const row of inserted ?? []) {
+      const plaidAccountId = row.plaid_account_id as string;
+      const accountId = row.id as string;
+      existingByPlaidId.set(plaidAccountId, accountId);
+      const snapshot = pendingSnapshots.get(plaidAccountId);
+      if (!snapshot) continue;
+      snapshots.push({
+        user_id: userId,
+        account_id: accountId,
+        current: snapshot.current,
+        available: snapshot.available,
+        iso_currency_code: snapshot.currency,
+        source: "plaid",
+        as_of: asOf,
+      });
+    }
+  }
+
+  for (const batch of chunk(toUpdate, WRITE_CHUNK)) {
+    const { error } = await supabase
+      .from("accounts")
+      .upsert(batch, { onConflict: "id" });
+    if (error) throw error;
+  }
+
+  for (const batch of chunk(snapshots, WRITE_CHUNK)) {
+    const { error } = await supabase.from("account_balances").insert(batch);
+    if (error) throw error;
+  }
+
+  return existingByPlaidId;
 }
 
-async function upsertPlaidTransaction(
+async function fetchExistingTransactions(
   supabase: SupabaseClient,
   userId: string,
-  tx: PlaidTransaction,
+  plaidIds: string[],
+): Promise<Map<string, ExistingTransaction>> {
+  const existing = new Map<string, ExistingTransaction>();
+  for (const ids of chunk(plaidIds, WRITE_CHUNK)) {
+    const { data, error } = await supabase
+      .from("transactions")
+      .select("id, category_id, type, amount, original_amount, notes, to_account_id, plaid_transaction_id")
+      .eq("user_id", userId)
+      .in("plaid_transaction_id", ids);
+    if (error) throw error;
+    for (const row of data ?? []) {
+      const plaidId = row.plaid_transaction_id as string | null;
+      if (!plaidId) continue;
+      existing.set(plaidId, {
+        id: row.id as string,
+        category_id: (row.category_id as string | null) ?? null,
+        type: row.type as string,
+        amount: Number(row.amount),
+        original_amount: Number(row.original_amount ?? row.amount),
+        notes: String(row.notes ?? ""),
+        to_account_id: (row.to_account_id as string | null) ?? null,
+      });
+    }
+  }
+  return existing;
+}
+
+async function applyPlaidTransactions(
+  supabase: SupabaseClient,
+  userId: string,
+  transactions: PlaidTransaction[],
+  accountByPlaidId: Map<string, string>,
   categories: CategoryRow[],
 ) {
-  const { data: account } = await supabase
-    .from("accounts")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("plaid_account_id", tx.account_id)
-    .maybeSingle();
-  if (!account) return;
+  if (transactions.length === 0) return;
 
-  const type = mapPlaidTransactionType(
-    tx.amount,
-    tx.personal_finance_category?.primary,
+  const unique = new Map<string, PlaidTransaction>();
+  for (const tx of transactions) unique.set(tx.transaction_id, tx);
+  const txs = [...unique.values()];
+
+  const neededCategories: { name: string; kind: string }[] = [];
+  for (const tx of txs) {
+    if (!accountByPlaidId.has(tx.account_id)) continue;
+    const type = mapPlaidTransactionType(
+      tx.amount,
+      tx.personal_finance_category?.primary,
+      tx.name,
+      tx.merchant_name,
+    );
+    const mapped =
+      type === "transfer"
+        ? mapNonSpendingCategory(
+            tx.personal_finance_category?.primary,
+            tx.name,
+            tx.merchant_name,
+          )
+        : mapPlaidCategoryName(
+            tx.personal_finance_category?.primary,
+            tx.personal_finance_category?.detailed,
+          );
+    if (mapped) neededCategories.push(mapped);
+  }
+  await ensureCategories(supabase, userId, categories, neededCategories);
+
+  const existing = await fetchExistingTransactions(
+    supabase,
+    userId,
+    txs.map((tx) => tx.transaction_id),
   );
-  const mapped = mapPlaidCategoryName(
-    tx.personal_finance_category?.primary,
-    tx.personal_finance_category?.detailed,
-  );
-  const categoryId =
-    mapped && type !== "transfer"
-      ? (categories.find(
-          (category) =>
-            category.name.toLowerCase() === mapped.name.toLowerCase() &&
-            category.kind === mapped.kind,
-        )?.id ?? null)
+
+  const inserts: TransactionWrite[] = [];
+  const updates: TransactionWrite[] = [];
+
+  for (const tx of txs) {
+    const accountId = accountByPlaidId.get(tx.account_id);
+    if (!accountId) continue;
+
+    let type = mapPlaidTransactionType(
+      tx.amount,
+      tx.personal_finance_category?.primary,
+      tx.name,
+      tx.merchant_name,
+    );
+    const current = existing.get(tx.transaction_id);
+    if (current?.type === "transfer" && type !== "transfer") {
+      type = "transfer";
+    }
+    const mapped =
+      type === "transfer"
+        ? mapNonSpendingCategory(
+            tx.personal_finance_category?.primary,
+            tx.name,
+            tx.merchant_name,
+          )
+        : mapPlaidCategoryName(
+            tx.personal_finance_category?.primary,
+            tx.personal_finance_category?.detailed,
+          );
+    const categoryId = mapped
+      ? (findCategoryId(categories, mapped.name, mapped.kind) ?? null)
       : null;
+    const keepManualCategory =
+      current != null && current.type === type && Boolean(current.category_id);
 
-  const row = {
-    user_id: userId,
-    date: tx.date,
-    description: tx.name || tx.merchant_name || "Plaid transaction",
-    amount: mapPlaidAmount(tx.amount),
-    type,
-    account_id: account.id,
-    category_id: categoryId,
-    to_account_id: null,
-    notes: "",
-    source: "plaid",
-    plaid_transaction_id: tx.transaction_id,
-    pending: Boolean(tx.pending),
-    merchant_name: tx.merchant_name ?? null,
-  };
+    const bankAmount = mapPlaidAmount(tx.amount);
+    const keepShare =
+      current != null && !sameMoney(current.amount, current.original_amount);
 
-  const { data: existing } = await supabase
-    .from("transactions")
-    .select("id, category_id")
-    .eq("user_id", userId)
-    .eq("plaid_transaction_id", tx.transaction_id)
-    .maybeSingle();
+    const row: TransactionWrite = {
+      user_id: userId,
+      date: tx.date,
+      description: tx.name || tx.merchant_name || "Plaid transaction",
+      amount: keepShare && current ? current.amount : bankAmount,
+      original_amount: bankAmount,
+      type,
+      account_id: accountId,
+      category_id: keepManualCategory ? current.category_id : categoryId,
+      to_account_id: current?.to_account_id ?? null,
+      notes: current?.notes ?? "",
+      source: "plaid",
+      plaid_transaction_id: tx.transaction_id,
+      pending: Boolean(tx.pending),
+      merchant_name: tx.merchant_name ?? null,
+      plaid_category: tx.personal_finance_category?.primary ?? null,
+    };
 
-  if (existing) {
+    if (current) {
+      updates.push({ ...row, id: current.id });
+    } else {
+      inserts.push(row);
+    }
+  }
+
+  for (const batch of chunk(inserts, WRITE_CHUNK)) {
+    const { error } = await supabase.from("transactions").insert(batch);
+    if (error) throw error;
+  }
+  for (const batch of chunk(updates, WRITE_CHUNK)) {
     const { error } = await supabase
       .from("transactions")
-      .update({
-        ...row,
-        category_id: existing.category_id ?? row.category_id,
-      })
-      .eq("id", existing.id);
-    if (error) throw error;
-  } else {
-    const { error } = await supabase.from("transactions").insert(row);
+      .upsert(batch, { onConflict: "id" });
     if (error) throw error;
   }
 }

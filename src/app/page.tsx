@@ -12,19 +12,21 @@ import {
   addMonths,
   currentMonth,
   formatDisplayDate,
+  formatRelativeTimestamp,
   lastNMonths,
   monthLabel,
 } from "@/lib/dates";
 import {
   accountBalance,
-  lookup,
   monthTotals,
   netWorth,
   sortTransactions,
   spendingByCategory,
+  transactionDetailLabel,
 } from "@/lib/finance";
 import { formatMoney } from "@/lib/money";
 import { useFinance } from "@/lib/store";
+import { transactionsHref } from "@/lib/transactions-href";
 
 export default function OverviewPage() {
   const { state, hydrated, addTransaction } = useFinance();
@@ -111,12 +113,14 @@ export default function OverviewPage() {
           value={totals.income}
           tone="income"
           hint={monthLabel(month)}
+          href={transactionsHref({ type: "income", month })}
         />
         <StatCard
           label="Expenses"
           value={-totals.expenses}
           tone="expense"
           hint={monthLabel(month)}
+          href={transactionsHref({ type: "expense", month })}
         />
         <StatCard
           label="Net cash flow"
@@ -129,7 +133,7 @@ export default function OverviewPage() {
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-border bg-surface p-5">
           <h3 className="mb-4 font-medium">Spending by category</h3>
-          <CategoryDonut slices={slices} />
+          <CategoryDonut slices={slices} month={month} />
         </div>
         <div className="rounded-2xl border border-border bg-surface p-5">
           <div className="mb-4 flex items-center justify-between">
@@ -152,14 +156,23 @@ export default function OverviewPage() {
             </Link>
           </div>
           <ul className="space-y-3">
-            {accounts.map(({ account, balance }) => (
+            {accounts.map(({ account, balance }) => {
+              const relative = formatRelativeTimestamp(account.lastSyncedAt);
+              return (
               <li
                 key={account.id}
                 className="flex items-center justify-between rounded-xl bg-surface-2 px-3 py-3"
               >
                 <div>
                   <p className="text-sm font-medium">{account.name}</p>
-                  <p className="text-xs text-muted capitalize">{account.type}</p>
+                  <p className="text-xs text-muted capitalize">
+                    {account.type}
+                    {account.source === "plaid"
+                      ? relative
+                        ? ` · synced ${relative}`
+                        : " · not synced yet"
+                      : ""}
+                  </p>
                 </div>
                 <p
                   className={`font-mono text-sm ${
@@ -173,7 +186,8 @@ export default function OverviewPage() {
                     : formatMoney(balance)}
                 </p>
               </li>
-            ))}
+              );
+            })}
           </ul>
         </div>
 
@@ -186,7 +200,6 @@ export default function OverviewPage() {
           </div>
           <ul className="space-y-3">
             {recent.map((tx) => {
-              const category = lookup(state.categories, tx.categoryId);
               const signed =
                 tx.type === "income"
                   ? tx.amount
@@ -199,7 +212,7 @@ export default function OverviewPage() {
                     <p className="truncate text-sm font-medium">{tx.description}</p>
                     <p className="text-xs text-muted">
                       {formatDisplayDate(tx.date)}
-                      {category ? ` · ${category.name}` : ""}
+                      {` · ${transactionDetailLabel(tx, state)}`}
                     </p>
                   </div>
                   <p

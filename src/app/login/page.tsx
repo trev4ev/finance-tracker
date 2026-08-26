@@ -10,7 +10,6 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<"signin" | "signup">("signin");
-  const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -30,28 +29,29 @@ export default function LoginPage() {
     event.preventDefault();
     setBusy(true);
     setError("");
-    setMessage("");
     const supabase = createClient();
     try {
-      if (mode === "signin") {
-        const { error: signError } = await supabase.auth.signInWithPassword({
-          email,
-          password,
+      if (mode === "signup") {
+        const response = await fetch("/api/auth/account", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email, password }),
         });
-        if (signError) throw signError;
-        router.push("/");
-        router.refresh();
-      } else {
-        const { error: signError } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            emailRedirectTo: `${window.location.origin}/auth/callback`,
-          },
-        });
-        if (signError) throw signError;
-        setMessage("Check your email to confirm the account, then sign in.");
+        const payload = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        if (!response.ok) {
+          throw new Error(payload.error ?? "Could not create account");
+        }
       }
+
+      const { error: signError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      if (signError) throw signError;
+      router.push("/");
+      router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Authentication failed");
     } finally {
@@ -76,6 +76,7 @@ export default function LoginPage() {
           <input
             type="email"
             required
+            autoComplete="email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
             className="w-full rounded-xl border border-border bg-surface px-3 py-2 outline-none focus:border-accent"
@@ -87,13 +88,13 @@ export default function LoginPage() {
             type="password"
             required
             minLength={6}
+            autoComplete={mode === "signin" ? "current-password" : "new-password"}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             className="w-full rounded-xl border border-border bg-surface px-3 py-2 outline-none focus:border-accent"
           />
         </label>
         {error ? <p className="text-sm text-expense">{error}</p> : null}
-        {message ? <p className="text-sm text-accent">{message}</p> : null}
         <button
           type="submit"
           disabled={busy}
@@ -108,7 +109,6 @@ export default function LoginPage() {
         onClick={() => {
           setMode((prev) => (prev === "signin" ? "signup" : "signin"));
           setError("");
-          setMessage("");
         }}
       >
         {mode === "signin"

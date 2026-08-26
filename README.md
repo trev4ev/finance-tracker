@@ -34,7 +34,7 @@ Without env vars the app still runs on `localStorage`.
    - `NEXT_PUBLIC_SUPABASE_URL`
    - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 3. Apply `supabase/migrations/20260824000000_ledger_finance.sql` in the SQL editor or with the Supabase CLI (`supabase db push`).
-4. Enable Email auth. Sign up from `/login`.
+4. Enable Email auth. Sign in from `/login` with email and password.
 
 Signed-in users store accounts, categories, transactions, budgets, and Plaid items in Postgres with RLS. Plaid access tokens are encrypted at rest. The first time you sign in, non-sample local data is uploaded if the cloud ledger is empty.
 
