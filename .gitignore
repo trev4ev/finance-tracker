@@ -43,3 +43,6 @@ next-env.d.ts
 
 # cloud agent workspace
 /agent-tools
+
+# supabase CLI local cache
+supabase/.temp/

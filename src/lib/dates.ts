@@ -55,3 +55,28 @@ export function daysInMonth(month: string): number {
   const [year, m] = month.split("-").map(Number);
   return new Date(year, m, 0).getDate();
 }
+
+export function monthDateRange(month: string): { from: string; to: string } {
+  const days = String(daysInMonth(month)).padStart(2, "0");
+  return { from: `${month}-01`, to: `${month}-${days}` };
+}
+
+export function formatRelativeTimestamp(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return null;
+  const deltaMs = Date.now() - date.getTime();
+  if (deltaMs < 45_000) return "just now";
+  const minutes = Math.round(deltaMs / 60_000);
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hr${hours === 1 ? "" : "s"} ago`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days} day${days === 1 ? "" : "s"} ago`;
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}

@@ -1,13 +1,19 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { Category } from "@/lib/types";
 import { formatMoney } from "@/lib/money";
+import { transactionsHref } from "@/lib/transactions-href";
 
 export function CategoryDonut({
   slices,
+  month,
 }: {
   slices: { category: Category; amount: number }[];
+  month?: string;
 }) {
+  const router = useRouter();
   const total = slices.reduce((sum, slice) => sum + slice.amount, 0);
   const size = 180;
   const stroke = 22;
@@ -51,6 +57,17 @@ export function CategoryDonut({
             strokeDashoffset={-arc.offset}
             strokeLinecap="butt"
             transform={`rotate(-90 ${size / 2} ${size / 2})`}
+            className={month ? "cursor-pointer" : undefined}
+            onClick={() => {
+              if (!month) return;
+              router.push(
+                transactionsHref({
+                  type: "expense",
+                  category: arc.category.id,
+                  month,
+                }),
+              );
+            }}
           />
         ))}
         <text
@@ -74,21 +91,43 @@ export function CategoryDonut({
         </text>
       </svg>
       <ul className="w-full space-y-2">
-        {slices.slice(0, 6).map((slice) => (
-          <li
-            key={slice.category.id}
-            className="flex items-center justify-between gap-3 text-sm"
-          >
-            <span className="flex items-center gap-2">
-              <span
-                className="h-2.5 w-2.5 rounded-full"
-                style={{ background: slice.category.color }}
-              />
-              {slice.category.name}
-            </span>
-            <span className="font-mono text-muted">{formatMoney(slice.amount)}</span>
-          </li>
-        ))}
+        {slices.slice(0, 6).map((slice) => {
+          const row = (
+            <>
+              <span className="flex items-center gap-2">
+                <span
+                  className="h-2.5 w-2.5 rounded-full"
+                  style={{ background: slice.category.color }}
+                />
+                {slice.category.name}
+              </span>
+              <span className="font-mono text-muted">{formatMoney(slice.amount)}</span>
+            </>
+          );
+          const className =
+            "flex items-center justify-between gap-3 rounded-lg px-1 py-0.5 text-sm";
+          if (!month) {
+            return (
+              <li key={slice.category.id} className={className}>
+                {row}
+              </li>
+            );
+          }
+          return (
+            <li key={slice.category.id}>
+              <Link
+                href={transactionsHref({
+                  type: "expense",
+                  category: slice.category.id,
+                  month,
+                })}
+                className={`${className} hover:bg-surface-2`}
+              >
+                {row}
+              </Link>
+            </li>
+          );
+        })}
         {slices.length === 0 ? (
           <li className="text-sm text-muted">No expenses this month.</li>
         ) : null}

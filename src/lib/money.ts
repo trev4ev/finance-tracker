@@ -16,6 +16,10 @@ export function formatSignedMoney(amount: number): string {
   return value;
 }
 
+export function sameMoney(a: number, b: number): boolean {
+  return Math.round(a * 100) === Math.round(b * 100);
+}
+
 export function parseAmount(input: string): number | null {
   const cleaned = input.replace(/[$,\s]/g, "");
   if (!cleaned) return null;

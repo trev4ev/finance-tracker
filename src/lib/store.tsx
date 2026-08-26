@@ -28,6 +28,7 @@ import {
 import { createDemoState, emptyState } from "./seed";
 import { createClient } from "./supabase/client";
 import { isSupabaseConfigured } from "./supabase/env";
+import { plaidAccountsNeedSync } from "./plaid/stale";
 import type {
   Account,
   Budget,
@@ -38,6 +39,7 @@ import type {
 } from "./types";
 
 const STORAGE_KEY = "ledger-finance-v1";
+let plaidAutoSyncStarted = false;
 
 type FinanceContextValue = {
   state: FinanceState;
@@ -241,19 +243,28 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
   );
 
   const syncPlaid = useCallback(async () => {
+    const current = userRef.current;
+    if (!current || !cloudEnabled) return;
     setSyncing(true);
     setError(null);
     try {
       const response = await fetch("/api/plaid/sync", { method: "POST" });
       const payload = (await response.json()) as { error?: string };
       if (!response.ok) throw new Error(payload.error || "Plaid sync failed");
-      await refresh();
+      await loadCloud(current.id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Plaid sync failed");
     } finally {
       setSyncing(false);
     }
-  }, [refresh]);
+  }, [cloudEnabled, loadCloud]);
+
+  useEffect(() => {
+    if (!hydrated || !user || !cloudEnabled || plaidAutoSyncStarted) return;
+    if (!plaidAccountsNeedSync(state)) return;
+    plaidAutoSyncStarted = true;
+    void syncPlaid();
+  }, [cloudEnabled, hydrated, state, syncPlaid, user]);
 
   const value = useMemo<FinanceContextValue>(
     () => ({
