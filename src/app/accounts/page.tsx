@@ -3,10 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Plus, RefreshCw } from "lucide-react";
+import { NativeSelect } from "@/components/form-controls";
 import { Modal } from "@/components/Modal";
 import { PlaidLinkButton } from "@/components/PlaidLinkButton";
 import { ACCOUNT_TYPES, type Account } from "@/lib/types";
 import { accountBalance } from "@/lib/finance";
+import { formatRelativeTimestamp } from "@/lib/dates";
 import { formatMoney } from "@/lib/money";
 import { useFinance } from "@/lib/store";
 
@@ -76,6 +78,15 @@ export default function AccountsPage() {
       <div className="grid gap-3 sm:grid-cols-2">
         {state.accounts.map((account) => {
           const balance = accountBalance(account, state.transactions);
+          const relative = formatRelativeTimestamp(account.lastSyncedAt);
+          const syncedLabel =
+            account.source === "plaid"
+              ? syncing
+                ? "Syncing…"
+                : relative
+                  ? `Synced ${relative}`
+                  : "Not synced yet"
+              : null;
           return (
             <button
               key={account.id}
@@ -104,6 +115,9 @@ export default function AccountsPage() {
                   ? `${formatMoney(Math.abs(balance))} owed`
                   : formatMoney(balance)}
               </p>
+              {syncedLabel ? (
+                <p className="mt-2 text-xs text-muted">{syncedLabel}</p>
+              ) : null}
             </button>
           );
         })}
@@ -183,26 +197,28 @@ function AccountModal({
             className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 outline-none focus:border-accent"
           />
         </label>
-        <label className="block text-sm">
+        <div className="block text-sm">
           <span className="mb-1 block text-muted">Type</span>
-          <select
+          <NativeSelect
             value={type}
             onChange={(event) =>
               setType(event.target.value as Account["type"])
             }
-            className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 outline-none focus:border-accent"
           >
             {ACCOUNT_TYPES.map((item) => (
               <option key={item.value} value={item.value}>
                 {item.label}
               </option>
             ))}
-          </select>
-        </label>
+          </NativeSelect>
+        </div>
         {initial?.source === "plaid" ? (
           <p className="text-sm text-muted">
             This account is linked through Plaid. Balance comes from the bank;
             renaming it here does not change the institution.
+            {initial.lastSyncedAt
+              ? ` Last synced ${formatRelativeTimestamp(initial.lastSyncedAt)}.`
+              : " Not synced yet."}
           </p>
         ) : (
         <label className="block text-sm">

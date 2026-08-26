@@ -1,12 +1,15 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { NativeSelect } from "@/components/form-controls";
 import { Modal } from "@/components/Modal";
 import { addMonths, currentMonth, monthLabel } from "@/lib/dates";
 import { lookup, spentForBudget } from "@/lib/finance";
 import { formatMoney, parseAmount } from "@/lib/money";
 import { useFinance } from "@/lib/store";
+import { transactionsHref } from "@/lib/transactions-href";
 
 export default function BudgetsPage() {
   const { state, hydrated, upsertBudget, deleteBudget } = useFinance();
@@ -80,7 +83,18 @@ export default function BudgetsPage() {
           >
             <div className="mb-3 flex items-start justify-between gap-3">
               <div>
-                <p className="font-medium">{category?.name ?? "Category"}</p>
+                <p className="font-medium">
+                  <Link
+                    href={transactionsHref({
+                      type: "expense",
+                      category: budget.categoryId,
+                      month,
+                    })}
+                    className="hover:text-accent"
+                  >
+                    {category?.name ?? "Category"}
+                  </Link>
+                </p>
                 <p className="text-xs text-muted">
                   {formatMoney(spent)} of {formatMoney(budget.amount)}
                 </p>
@@ -169,20 +183,19 @@ function BudgetModal({
           onSave({ categoryId, month, amount: parsed });
         }}
       >
-        <label className="block text-sm">
+        <div className="block text-sm">
           <span className="mb-1 block text-muted">Category</span>
-          <select
+          <NativeSelect
             value={categoryId}
             onChange={(event) => setCategoryId(event.target.value)}
-            className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 outline-none focus:border-accent"
           >
             {categoryOptions.map((category) => (
               <option key={category.id} value={category.id}>
                 {category.name}
               </option>
             ))}
-          </select>
-        </label>
+          </NativeSelect>
+        </div>
         <label className="block text-sm">
           <span className="mb-1 block text-muted">Monthly cap</span>
           <input

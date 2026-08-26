@@ -1,3 +1,4 @@
+import { sameMoney } from "./money";
 import type {
   Account,
   Budget,
@@ -16,12 +17,12 @@ export function accountBalance(
   let balance = account.startingBalance;
   for (const tx of transactions) {
     if (tx.type === "income" && tx.accountId === account.id) {
-      balance += tx.amount;
+      balance += cashAmount(tx);
     } else if (tx.type === "expense" && tx.accountId === account.id) {
-      balance -= tx.amount;
+      balance -= cashAmount(tx);
     } else if (tx.type === "transfer") {
-      if (tx.accountId === account.id) balance -= tx.amount;
-      if (tx.toAccountId === account.id) balance += tx.amount;
+      if (tx.accountId === account.id) balance -= cashAmount(tx);
+      if (tx.toAccountId === account.id) balance += cashAmount(tx);
     }
   }
   return balance;
@@ -82,12 +83,52 @@ export function spentForBudget(
     .reduce((sum, tx) => sum + tx.amount, 0);
 }
 
+/** What actually moved in the account (bank charge), even if spending was split. */
+export function cashAmount(tx: Transaction): number {
+  return tx.originalAmount ?? tx.amount;
+}
+
+export function hasAdjustedAmount(tx: Transaction): boolean {
+  return !sameMoney(tx.amount, cashAmount(tx));
+}
+
 export function lookup<T extends { id: string }>(
   items: T[],
   id: string | null | undefined,
 ): T | undefined {
   if (!id) return undefined;
   return items.find((item) => item.id === id);
+}
+
+function formatPlaidCategoryLabel(primary: string | null | undefined): string | null {
+  if (!primary) return null;
+  return primary
+    .toLowerCase()
+    .split("_")
+    .filter(Boolean)
+    .map((word) => word[0]!.toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+export function transactionDetailLabel(
+  tx: Transaction,
+  state: Pick<FinanceState, "accounts" | "categories">,
+): string {
+  if (tx.type === "transfer") {
+    const from = lookup(state.accounts, tx.accountId)?.name;
+    const to = lookup(state.accounts, tx.toAccountId)?.name;
+    if (from && to) return `${from} → ${to}`;
+    return (
+      lookup(state.categories, tx.categoryId)?.name ??
+      formatPlaidCategoryLabel(tx.plaidCategory) ??
+      "Transfer"
+    );
+  }
+  return (
+    lookup(state.categories, tx.categoryId)?.name ??
+    formatPlaidCategoryLabel(tx.plaidCategory) ??
+    "Uncategorized"
+  );
 }
 
 export function sortTransactions(transactions: Transaction[]): Transaction[] {

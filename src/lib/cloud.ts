@@ -124,6 +124,7 @@ export function transactionToRow(tx: Transaction, userId: string) {
     date: tx.date,
     description: tx.description,
     amount: tx.amount,
+    original_amount: tx.originalAmount,
     type: tx.type,
     account_id: tx.accountId,
     category_id: tx.categoryId,
@@ -133,6 +134,7 @@ export function transactionToRow(tx: Transaction, userId: string) {
     plaid_transaction_id: tx.plaidTransactionId,
     pending: tx.pending,
     merchant_name: tx.merchantName,
+    plaid_category: tx.plaidCategory,
   };
 }
 
@@ -189,6 +191,9 @@ function transactionFromRow(row: Record<string, unknown>): Transaction {
     date: String(row.date).slice(0, 10),
     description: String(row.description),
     amount: num(row.amount as number),
+    originalAmount: num(
+      (row.original_amount as number | undefined) ?? (row.amount as number),
+    ),
     type: row.type as Transaction["type"],
     accountId: String(row.account_id),
     categoryId: (row.category_id as string | null) ?? null,
@@ -198,6 +203,7 @@ function transactionFromRow(row: Record<string, unknown>): Transaction {
     plaidTransactionId: (row.plaid_transaction_id as string | null) ?? null,
     pending: Boolean(row.pending),
     merchantName: (row.merchant_name as string | null) ?? null,
+    plaidCategory: (row.plaid_category as string | null) ?? null,
   };
 }
 
