@@ -3,6 +3,10 @@ const formatter = new Intl.NumberFormat("en-US", {
   currency: "USD",
 });
 
+export function roundMoney(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
 export function formatMoney(amount: number): string {
   const value = formatter.format(Math.abs(amount));
   if (amount < 0) return `-${value}`;
