@@ -13,10 +13,29 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH?.replace(/\/$/, "") || "";
+const asset = (path: string) => `${basePath}${path}`;
+
 export const metadata: Metadata = {
   title: "Ledger — Personal finance tracker",
   description:
     "Track accounts, transactions, and budgets. Sync to Supabase and link banks with Plaid.",
+  applicationName: "Ledger",
+  // Stable filenames (no query hash) so iOS “Add to Home Screen” picks these up.
+  // Next.js does not prefix metadata.icons with `basePath` for static export.
+  icons: {
+    icon: [
+      { url: asset("/favicon.ico"), sizes: "any" },
+      { url: asset("/icon.png"), type: "image/png", sizes: "512x512" },
+    ],
+    apple: [
+      {
+        url: asset("/apple-touch-icon.png"),
+        sizes: "180x180",
+        type: "image/png",
+      },
+    ],
+  },
   appleWebApp: {
     capable: true,
     title: "Ledger",
