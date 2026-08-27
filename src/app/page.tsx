@@ -125,7 +125,9 @@ export default function OverviewPage() {
         </div>
         <div className="mt-3 flex items-center justify-between text-sm">
           <span className="text-muted">Net worth</span>
-          <span className="font-mono font-medium">{formatMoney(worth)}</span>
+          <Link href="/accounts#history" className="font-mono font-medium">
+            {formatMoney(worth)}
+          </Link>
         </div>
       </section>
 
@@ -149,7 +151,7 @@ export default function OverviewPage() {
           value={totals.net}
           hint={totals.net >= 0 ? "In the black" : "Spending more than you earn"}
         />
-        <StatCard label="Net worth" value={worth} hint="All accounts combined" />
+          <StatCard label="Net worth" value={worth} hint="All accounts combined" href="/accounts#history" />
       </section>
 
       <section className="lg:hidden">

@@ -1,15 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Pencil, Plus, RefreshCw } from "lucide-react";
+import { BalanceHistoryChart } from "@/components/BalanceHistoryChart";
 import { NativeSelect } from "@/components/form-controls";
 import { Modal } from "@/components/Modal";
 import { PlaidLinkButton } from "@/components/PlaidLinkButton";
+import { SegmentedControl } from "@/components/SegmentedControl";
 import { ACCOUNT_TYPES, type Account } from "@/lib/types";
-import { accountBalance } from "@/lib/finance";
+import {
+  accountBalance,
+  accountChartColor,
+  formatAccountBalance,
+  historicalBalances,
+  historyRangeEnd,
+  historyRangeStart,
+  HISTORY_RANGES,
+  type HistoryRange,
+} from "@/lib/finance";
 import { formatRelativeTimestamp } from "@/lib/dates";
-import { formatMoney } from "@/lib/money";
 import { useFinance } from "@/lib/store";
 import { transactionsHref } from "@/lib/transactions-href";
 
@@ -27,6 +37,19 @@ export default function AccountsPage() {
     syncPlaid,
   } = useFinance();
   const [editing, setEditing] = useState<Account | "new" | null>(null);
+  const [range, setRange] = useState<HistoryRange>("3m");
+  const [selectedAccountId, setSelectedAccountId] = useState<string | "all">(
+    "all",
+  );
+  const selectedId = state.accounts.some((account) => account.id === selectedAccountId)
+    ? selectedAccountId
+    : "all";
+
+  const historyPoints = useMemo(() => {
+    const to = historyRangeEnd(state.transactions);
+    const from = historyRangeStart(range, state.transactions, to);
+    return historicalBalances(state.accounts, state.transactions, from, to);
+  }, [range, state.accounts, state.transactions]);
 
   if (!hydrated) {
     return <div className="h-40 animate-pulse rounded-2xl bg-surface" />;
@@ -78,6 +101,50 @@ export default function AccountsPage() {
         </div>
       </header>
 
+      {state.accounts.length > 0 ? (
+        <section
+          id="history"
+          className="scroll-mt-4 rounded-2xl border border-border bg-surface p-4 sm:p-5"
+        >
+          <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="font-medium">Balance history</h3>
+              <p className="hidden text-sm text-muted sm:block">
+                How each account has moved over time.
+              </p>
+            </div>
+            <SegmentedControl
+              value={range}
+              onChange={setRange}
+              options={HISTORY_RANGES}
+            />
+          </div>
+          <div className="no-scrollbar -mx-1 mb-4 flex gap-2 overflow-x-auto px-1">
+            <AccountChip
+              label="All accounts"
+              selected={selectedId === "all"}
+              onClick={() => setSelectedAccountId("all")}
+            />
+            {state.accounts.map((account) => (
+              <AccountChip
+                key={account.id}
+                label={account.name}
+                color={accountChartColor(account, state.accounts)}
+                selected={selectedId === account.id}
+                onClick={() => setSelectedAccountId(account.id)}
+              />
+            ))}
+          </div>
+          <BalanceHistoryChart
+            key={`${range}-${selectedId}`}
+            accounts={state.accounts}
+            points={historyPoints}
+            selectedAccountId={selectedId}
+            onSelectAccount={setSelectedAccountId}
+          />
+        </section>
+      ) : null}
+
       <div className="grid gap-3 sm:grid-cols-2">
         {state.accounts.map((account) => {
           const balance = accountBalance(account, state.transactions);
@@ -116,9 +183,7 @@ export default function AccountsPage() {
                     balance < 0 ? "text-expense" : "text-foreground"
                   }`}
                 >
-                  {account.type === "credit" && balance < 0
-                    ? `${formatMoney(Math.abs(balance))} owed`
-                    : formatMoney(balance)}
+                  {formatAccountBalance(account.type, balance)}
                 </p>
                 {syncedLabel ? (
                   <p className="mt-2 text-xs text-muted">{syncedLabel}</p>
@@ -166,6 +231,38 @@ export default function AccountsPage() {
         />
       ) : null}
     </div>
+  );
+}
+
+function AccountChip({
+  label,
+  selected,
+  onClick,
+  color,
+}: {
+  label: string;
+  selected: boolean;
+  onClick: () => void;
+  color?: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3 text-sm ${
+        selected
+          ? "border-accent bg-accent/15 text-foreground"
+          : "border-border text-muted active:bg-surface-2"
+      }`}
+    >
+      {color ? (
+        <span
+          className="h-2 w-2 rounded-full"
+          style={{ background: color }}
+        />
+      ) : null}
+      {label}
+    </button>
   );
 }
 

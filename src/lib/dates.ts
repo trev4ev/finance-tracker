@@ -96,3 +96,37 @@ export function formatRelativeTimestamp(iso: string | null | undefined): string 
     minute: "2-digit",
   });
 }
+
+export function parseISODate(iso: string): Date {
+  const [year, m, d] = iso.split("-").map(Number);
+  return new Date(year, m - 1, d);
+}
+
+export function addDays(iso: string, delta: number): string {
+  const date = parseISODate(iso);
+  date.setDate(date.getDate() + delta);
+  return toISODate(date);
+}
+
+export function daysBetween(from: string, to: string): number {
+  const start = parseISODate(from).getTime();
+  const end = parseISODate(to).getTime();
+  return Math.round((end - start) / 86_400_000);
+}
+
+export function formatChartTick(iso: string): string {
+  const date = parseISODate(iso);
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+export function formatChartDate(iso: string): string {
+  if (iso === todayISO()) return "Today";
+  const date = parseISODate(iso);
+  const nowYear = new Date().getFullYear();
+  return date.toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    ...(date.getFullYear() === nowYear ? {} : { year: "numeric" }),
+  });
+}
