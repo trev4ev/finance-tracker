@@ -163,7 +163,7 @@ export default function OverviewPage() {
             <ChevronRight size={16} />
           </Link>
         </div>
-        <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4">
+        <div className="no-scrollbar -mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 scroll-pl-4 sm:-mx-6 sm:px-6 sm:scroll-pl-6">
           {accounts.map(({ account, balance }) => (
             <Link
               key={account.id}
