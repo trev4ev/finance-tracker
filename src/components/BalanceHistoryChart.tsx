@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import {
   accountChartColor,
   formatAccountBalance,
@@ -31,7 +31,6 @@ export function BalanceHistoryChart({
 }) {
   const gradientId = useId().replace(/:/g, "");
   const wrapRef = useRef<HTMLDivElement>(null);
-  const svgRef = useRef<SVGSVGElement>(null);
   const [width, setWidth] = useState(320);
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const capturing = useRef(false);
@@ -210,9 +209,9 @@ export function BalanceHistoryChart({
 
   const indexFromClientX = useCallback(
     (clientX: number) => {
-      const svg = svgRef.current;
-      if (!svg || points.length === 0) return lastIndex;
-      const rect = svg.getBoundingClientRect();
+      const el = wrapRef.current;
+      if (!el || points.length === 0) return lastIndex;
+      const rect = el.getBoundingClientRect();
       const t = (clientX - rect.left - pad.l) / innerW;
       const clamped = Math.min(1, Math.max(0, t));
       return Math.round(clamped * (points.length - 1));
@@ -220,10 +219,37 @@ export function BalanceHistoryChart({
     [innerW, lastIndex, pad.l, points.length],
   );
 
-  const endScrub = useCallback((pointerType: string) => {
+  const inspectAt = useCallback(
+    (clientX: number) => {
+      setActiveIndex(indexFromClientX(clientX));
+    },
+    [indexFromClientX],
+  );
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    capturing.current = true;
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+    inspectAt(event.clientX);
+  };
+
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse" || capturing.current) {
+      inspectAt(event.clientX);
+    }
+  };
+
+  const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
     capturing.current = false;
-    if (pointerType !== "mouse") setActiveIndex(null);
-  }, []);
+    if (event.pointerType === "mouse") return;
+    inspectAt(event.clientX);
+  };
+
+  const handlePointerLeave = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse" && !capturing.current) {
+      setActiveIndex(null);
+    }
+  };
 
   if (points.length === 0) {
     return (
@@ -239,14 +265,29 @@ export function BalanceHistoryChart({
     selectedAccount
       ? formatAccountBalance(selectedAccount.type, headlineValue)
       : formatMoney(headlineValue);
-  const scrubbing = activeIndex !== null;
+  const inspecting = activeIndex !== null;
 
   return (
     <div className="space-y-3">
       <div aria-live="polite" className="min-h-[4.5rem]">
-        <p className="text-xs font-medium tracking-wide text-muted uppercase">
-          {scrubbing ? formatChartDate(active!.date) : selectedAccount ? selectedAccount.name : "Net worth"}
-        </p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs font-medium tracking-wide text-muted uppercase">
+            {inspecting
+              ? formatChartDate(active!.date)
+              : selectedAccount
+                ? selectedAccount.name
+                : "Net worth"}
+          </p>
+          {inspecting && activeIndex !== lastIndex ? (
+            <button
+              type="button"
+              onClick={() => setActiveIndex(null)}
+              className="text-xs font-medium text-accent"
+            >
+              Latest
+            </button>
+          ) : null}
+        </div>
         <p
           className={`mt-0.5 font-mono text-3xl font-semibold ${
             headlineValue < 0 ? "text-expense" : "text-foreground"
@@ -257,57 +298,22 @@ export function BalanceHistoryChart({
         <p className={`text-sm ${delta < 0 ? "text-expense" : "text-income"}`}>
           {formatSignedMoney(delta)}
           <span className="text-muted">
-            {scrubbing ? " vs start of range" : " this range"}
+            {inspecting ? " vs start of range" : " this range"}
           </span>
         </p>
       </div>
 
       <div
         ref={wrapRef}
-        className="touch-none select-none"
+        className="relative select-none"
         style={{ touchAction: "none" }}
       >
         <svg
-          ref={svgRef}
           width={width || "100%"}
           height={height}
           viewBox={width ? `0 0 ${width} ${height}` : undefined}
-          role="slider"
-          tabIndex={0}
-          aria-label="Account balance history"
-          aria-valuemin={0}
-          aria-valuemax={lastIndex}
-          aria-valuenow={index}
-          aria-valuetext={`${formatChartDate(active!.date)} ${headline}`}
-          className="h-[220px] w-full cursor-crosshair outline-none"
-          onPointerDown={(event) => {
-            capturing.current = true;
-            event.currentTarget.setPointerCapture(event.pointerId);
-            setActiveIndex(indexFromClientX(event.clientX));
-          }}
-          onPointerMove={(event) => {
-            if (event.pointerType === "mouse" || capturing.current) {
-              setActiveIndex(indexFromClientX(event.clientX));
-            }
-          }}
-          onPointerUp={(event) => endScrub(event.pointerType)}
-          onPointerCancel={(event) => endScrub(event.pointerType)}
-          onPointerLeave={(event) => {
-            if (!capturing.current) endScrub(event.pointerType);
-          }}
-          onKeyDown={(event) => {
-            if (event.key === "ArrowLeft") {
-              event.preventDefault();
-              setActiveIndex(Math.max(0, index - 1));
-            } else if (event.key === "ArrowRight") {
-              event.preventDefault();
-              setActiveIndex(Math.min(lastIndex, index + 1));
-            } else if (event.key === "Escape" || event.key === "Home") {
-              setActiveIndex(null);
-            } else if (event.key === "End") {
-              setActiveIndex(lastIndex);
-            }
-          }}
+          aria-hidden
+          className="pointer-events-none h-[220px] w-full"
         >
           <defs>
             {layers.map((layer) => (
@@ -319,8 +325,8 @@ export function BalanceHistoryChart({
                 x2="0"
                 y2="1"
               >
-                <stop offset="0%" stopColor={layer.color} stopOpacity="0.45" />
-                <stop offset="100%" stopColor={layer.color} stopOpacity="0.04" />
+                <stop offset="0%" stopColor={layer.color} stopOpacity="0.55" />
+                <stop offset="100%" stopColor={layer.color} stopOpacity="0.06" />
               </linearGradient>
             ))}
           </defs>
@@ -345,7 +351,7 @@ export function BalanceHistoryChart({
                   ? `url(#${gradientId}-${layer.id})`
                   : layer.color
               }
-              fillOpacity={selectedAccount ? 1 : 0.35}
+              fillOpacity={selectedAccount ? 1 : 0.5}
               stroke="none"
             />
           ))}
@@ -353,13 +359,17 @@ export function BalanceHistoryChart({
           <path
             d={netLine}
             fill="none"
-            stroke={layers[0]?.color && selectedAccount ? layers[0].color : "var(--color-foreground)"}
+            stroke={
+              selectedAccount
+                ? (layers[0]?.color ?? "var(--color-accent)")
+                : "var(--color-foreground)"
+            }
             strokeWidth={2.25}
             strokeLinejoin="round"
             strokeLinecap="round"
           />
 
-          {scrubbing ? (
+          {inspecting ? (
             <g>
               <line
                 x1={activeX}
@@ -403,6 +413,38 @@ export function BalanceHistoryChart({
             </text>
           ))}
         </svg>
+        <div
+          role="slider"
+          tabIndex={0}
+          aria-label="Account balance history"
+          aria-valuemin={0}
+          aria-valuemax={lastIndex}
+          aria-valuenow={index}
+          aria-valuetext={`${formatChartDate(active!.date)} ${headline}`}
+          className="absolute inset-0 cursor-crosshair touch-none outline-none"
+          style={{ touchAction: "none" }}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={() => {
+            capturing.current = false;
+          }}
+          onPointerLeave={handlePointerLeave}
+          onClick={(event) => inspectAt(event.clientX)}
+          onKeyDown={(event) => {
+            if (event.key === "ArrowLeft") {
+              event.preventDefault();
+              setActiveIndex(Math.max(0, index - 1));
+            } else if (event.key === "ArrowRight") {
+              event.preventDefault();
+              setActiveIndex(Math.min(lastIndex, index + 1));
+            } else if (event.key === "Escape" || event.key === "Home") {
+              setActiveIndex(null);
+            } else if (event.key === "End") {
+              setActiveIndex(lastIndex);
+            }
+          }}
+        />
       </div>
 
       <p className="text-center text-[11px] text-muted">

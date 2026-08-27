@@ -99,6 +99,17 @@ export function historyRangeStart(
   return start < opening ? opening : start;
 }
 
+export function historyRangeEnd(
+  transactions: Transaction[],
+  endDate = todayISO(),
+): string {
+  let latest = endDate;
+  for (const tx of transactions) {
+    if (tx.date > latest) latest = tx.date;
+  }
+  return latest;
+}
+
 export function historicalBalances(
   accounts: Account[],
   transactions: Transaction[],

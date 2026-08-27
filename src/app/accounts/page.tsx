@@ -14,11 +14,12 @@ import {
   accountChartColor,
   formatAccountBalance,
   historicalBalances,
+  historyRangeEnd,
   historyRangeStart,
   HISTORY_RANGES,
   type HistoryRange,
 } from "@/lib/finance";
-import { formatRelativeTimestamp, todayISO } from "@/lib/dates";
+import { formatRelativeTimestamp } from "@/lib/dates";
 import { useFinance } from "@/lib/store";
 import { transactionsHref } from "@/lib/transactions-href";
 
@@ -45,7 +46,7 @@ export default function AccountsPage() {
     : "all";
 
   const historyPoints = useMemo(() => {
-    const to = todayISO();
+    const to = historyRangeEnd(state.transactions);
     const from = historyRangeStart(range, state.transactions, to);
     return historicalBalances(state.accounts, state.transactions, from, to);
   }, [range, state.accounts, state.transactions]);
@@ -135,6 +136,7 @@ export default function AccountsPage() {
             ))}
           </div>
           <BalanceHistoryChart
+            key={`${range}-${selectedId}`}
             accounts={state.accounts}
             points={historyPoints}
             selectedAccountId={selectedId}
