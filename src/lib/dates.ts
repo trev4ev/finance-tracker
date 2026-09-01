@@ -77,6 +77,19 @@ export function monthDateRange(month: string): { from: string; to: string } {
   return { from: `${month}-01`, to: `${month}-${days}` };
 }
 
+export function datesInMonth(month: string): string[] {
+  const { from, to } = monthDateRange(month);
+  const dates: string[] = [];
+  for (let date = from; date <= to; date = addDays(date, 1)) {
+    dates.push(date);
+  }
+  return dates;
+}
+
+export function formatChartDay(iso: string): string {
+  return String(parseISODate(iso).getDate());
+}
+
 export function formatRelativeTimestamp(iso: string | null | undefined): string | null {
   if (!iso) return null;
   const date = new Date(iso);
