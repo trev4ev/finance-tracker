@@ -8,18 +8,23 @@ import { CategoryDonut } from "@/components/CategoryDonut";
 import { Fab } from "@/components/Fab";
 import { Modal } from "@/components/Modal";
 import { MonthSwitcher } from "@/components/MonthSwitcher";
+import { SegmentedControl } from "@/components/SegmentedControl";
 import { StatCard } from "@/components/StatCard";
 import { TransactionForm } from "@/components/TransactionForm";
 import { TransactionRow } from "@/components/TransactionRow";
 import {
   currentMonth,
+  formatChartDate,
+  formatChartDay,
   formatRelativeTimestamp,
   lastNMonths,
   monthLabel,
+  shortMonthLabel,
 } from "@/lib/dates";
 import {
   accountBalance,
   lookup,
+  monthDailyCashFlow,
   monthTotals,
   netWorth,
   sortTransactions,
@@ -30,10 +35,13 @@ import { useFinance } from "@/lib/store";
 import { transactionsHref } from "@/lib/transactions-href";
 import type { Transaction } from "@/lib/types";
 
+type CashFlowView = "monthly" | "daily";
+
 export default function OverviewPage() {
   const { state, hydrated, addTransaction, updateTransaction, deleteTransaction } =
     useFinance();
   const [month, setMonth] = useState(currentMonth());
+  const [cashFlowView, setCashFlowView] = useState<CashFlowView>("monthly");
   const [editing, setEditing] = useState<Transaction | "new" | null>(null);
 
   const totals = useMemo(
@@ -45,14 +53,29 @@ export default function OverviewPage() {
     () => spendingByCategory(state, month),
     [month, state],
   );
-  const cashflow = useMemo(
-    () =>
-      lastNMonths(6, month).map((item) => ({
-        month: item,
-        ...monthTotals(state.transactions, item),
-      })),
-    [month, state.transactions],
-  );
+  const cashflow = useMemo(() => {
+    if (cashFlowView === "daily") {
+      return monthDailyCashFlow(state.transactions, month).map((row) => ({
+        key: row.date,
+        label: formatChartDay(row.date),
+        title: formatChartDate(row.date),
+        income: row.income,
+        expenses: row.expenses,
+        net: row.net,
+      }));
+    }
+    return lastNMonths(6, month).map((item) => {
+      const totalsForMonth = monthTotals(state.transactions, item);
+      return {
+        key: item,
+        label: shortMonthLabel(item),
+        title: monthLabel(item),
+        income: totalsForMonth.income,
+        expenses: totalsForMonth.expenses,
+        net: totalsForMonth.net,
+      };
+    });
+  }, [cashFlowView, month, state.transactions]);
   const recent = useMemo(
     () => sortTransactions(state.transactions).slice(0, 6),
     [state.transactions],
@@ -154,6 +177,33 @@ export default function OverviewPage() {
           <StatCard label="Net worth" value={worth} hint="All accounts combined" href="/accounts#history" />
       </section>
 
+      <section className="grid gap-4 lg:grid-cols-2">
+        <div className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
+          <h3 className="mb-4 font-medium">Spending by category</h3>
+          <CategoryDonut slices={slices} compactCount={4} month={month} />
+        </div>
+        <div className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
+          <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="font-medium">Cash flow</h3>
+              <p className="hidden text-xs text-muted sm:block">
+                <span className="mr-2 text-income">● Income</span>
+                <span className="text-expense">● Expenses</span>
+              </p>
+            </div>
+            <SegmentedControl
+              value={cashFlowView}
+              onChange={setCashFlowView}
+              options={[
+                { value: "monthly", label: "Monthly" },
+                { value: "daily", label: "Daily" },
+              ]}
+            />
+          </div>
+          <CashFlowChart key={`${cashFlowView}-${month}`} series={cashflow} />
+        </div>
+      </section>
+
       <section className="lg:hidden">
         <div className="mb-3 flex items-center justify-between">
           <h3 className="font-medium">Accounts</h3>
@@ -217,23 +267,6 @@ export default function OverviewPage() {
             </li>
           ))}
         </ul>
-      </section>
-
-      <section className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
-          <h3 className="mb-4 font-medium">Spending by category</h3>
-          <CategoryDonut slices={slices} compactCount={4} month={month} />
-        </div>
-        <div className="hidden rounded-2xl border border-border bg-surface p-5 lg:block">
-          <div className="mb-4 flex items-center justify-between">
-            <h3 className="font-medium">Cash flow</h3>
-            <p className="text-xs text-muted">
-              <span className="mr-2 text-income">● Income</span>
-              <span className="text-expense">● Expenses</span>
-            </p>
-          </div>
-          <CashFlowChart series={cashflow} />
-        </div>
       </section>
 
       <section className="hidden gap-4 lg:grid lg:grid-cols-2">
@@ -303,17 +336,6 @@ export default function OverviewPage() {
             ))}
           </ul>
         </div>
-      </section>
-
-      <section className="rounded-2xl border border-border bg-surface p-4 lg:hidden">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="font-medium">Cash flow</h3>
-          <p className="text-xs text-muted">
-            <span className="mr-2 text-income">● In</span>
-            <span className="text-expense">● Out</span>
-          </p>
-        </div>
-        <CashFlowChart series={cashflow} />
       </section>
 
       {editing ? null : (

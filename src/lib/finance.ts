@@ -1,4 +1,4 @@
-import { addDays, daysBetween, todayISO } from "./dates";
+import { addDays, datesInMonth, daysBetween, todayISO } from "./dates";
 import { formatMoney, roundMoney, sameMoney } from "./money";
 import type {
   Account,
@@ -236,7 +236,16 @@ export function inMonth(tx: Transaction, month: string): boolean {
   return tx.date.startsWith(month);
 }
 
-export function monthTotals(transactions: Transaction[], month: string) {
+export type CashFlowTotals = {
+  income: number;
+  expenses: number;
+  net: number;
+};
+
+export function monthTotals(
+  transactions: Transaction[],
+  month: string,
+): CashFlowTotals {
   let income = 0;
   let expenses = 0;
   for (const tx of transactions) {
@@ -245,6 +254,32 @@ export function monthTotals(transactions: Transaction[], month: string) {
     if (tx.type === "expense") expenses += tx.amount;
   }
   return { income, expenses, net: income - expenses };
+}
+
+export function monthDailyCashFlow(
+  transactions: Transaction[],
+  month: string,
+): ({ date: string } & CashFlowTotals)[] {
+  const dates = datesInMonth(month);
+  const byDate = new Map(
+    dates.map((date) => [date, { income: 0, expenses: 0 }]),
+  );
+  for (const tx of transactions) {
+    if (!inMonth(tx, month)) continue;
+    const row = byDate.get(tx.date);
+    if (!row) continue;
+    if (tx.type === "income") row.income += tx.amount;
+    if (tx.type === "expense") row.expenses += tx.amount;
+  }
+  return dates.map((date) => {
+    const row = byDate.get(date) ?? { income: 0, expenses: 0 };
+    return {
+      date,
+      income: row.income,
+      expenses: row.expenses,
+      net: row.income - row.expenses,
+    };
+  });
 }
 
 export function spendingByCategory(
