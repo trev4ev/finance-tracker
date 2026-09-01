@@ -345,6 +345,8 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         );
       },
       updateTransaction: (tx) => {
+        const existing = state.transactions.find((item) => item.id === tx.id);
+        if (existing?.pending) return;
         const row = normalizeTransaction(tx);
         commit((prev) => ({
           ...prev,
