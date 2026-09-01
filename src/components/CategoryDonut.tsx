@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { Category } from "@/lib/types";
@@ -16,6 +17,8 @@ export function CategoryDonut({
   month?: string;
 }) {
   const router = useRouter();
+  const [expanded, setExpanded] = useState(false);
+  const hiddenCount = Math.max(0, slices.length - compactCount);
   const total = slices.reduce((sum, slice) => sum + slice.amount, 0);
   const size = 180;
   const stroke = 22;
@@ -98,8 +101,9 @@ export function CategoryDonut({
         </text>
       </svg>
       <ul className="w-full space-y-3">
-        {slices.slice(0, 6).map((slice, index) => {
+        {slices.map((slice, index) => {
           const pct = total === 0 ? 0 : (slice.amount / total) * 100;
+          const collapsedOnMobile = !expanded && index >= compactCount;
           const row = (
             <>
               <div className="flex items-center justify-between gap-3 text-sm">
@@ -128,7 +132,7 @@ export function CategoryDonut({
           return (
             <li
               key={slice.category.id}
-              className={index >= compactCount ? "hidden sm:block" : undefined}
+              className={collapsedOnMobile ? "hidden sm:block" : undefined}
             >
               {month ? (
                 <Link
@@ -150,9 +154,26 @@ export function CategoryDonut({
         {slices.length === 0 ? (
           <li className="text-sm text-muted">No expenses this month.</li>
         ) : null}
-        {slices.length > compactCount ? (
-          <li className="text-xs text-muted sm:hidden">
-            +{slices.length - compactCount} more
+        {hiddenCount > 0 && !expanded ? (
+          <li className="sm:hidden">
+            <button
+              type="button"
+              onClick={() => setExpanded(true)}
+              className="text-xs text-accent"
+            >
+              +{hiddenCount} more
+            </button>
+          </li>
+        ) : null}
+        {hiddenCount > 0 && expanded ? (
+          <li className="sm:hidden">
+            <button
+              type="button"
+              onClick={() => setExpanded(false)}
+              className="text-xs text-muted"
+            >
+              Show less
+            </button>
           </li>
         ) : null}
       </ul>
