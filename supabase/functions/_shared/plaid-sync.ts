@@ -306,10 +306,8 @@ async function upsertPlaidAccounts(
     const current = signedBalance(type, num(plaidAccount.balances.current));
     const available = num(plaidAccount.balances.available);
     const currency = plaidAccount.balances.iso_currency_code || "USD";
-    const plaidName =
-      plaidAccount.name || plaidAccount.official_name || "Linked account";
-    // `name` is the user-facing label (editable in the app). Do not overwrite it
-    // on later syncs; Plaid's names stay on `official_name`.
+    // `name` is the user-facing label (editable in the app). Never send it on
+    // updates — Plaid nicknames like "CREDIT CARD" stay on `official_name`.
     const fields = {
       type,
       current_balance: current,
@@ -329,7 +327,7 @@ async function upsertPlaidAccounts(
       toInsert.push({
         user_id: userId,
         starting_balance: 0,
-        name: plaidName,
+        name: plaidAccount.name || plaidAccount.official_name || "Linked account",
         ...fields,
       });
       pendingSnapshots.set(plaidAccount.account_id, {
@@ -375,10 +373,14 @@ async function upsertPlaidAccounts(
     }
   }
 
-  for (const batch of chunk(toUpdate, WRITE_CHUNK)) {
+  for (const row of toUpdate) {
+    const { id, user_id, ...fields } = row;
+    delete fields.name;
     const { error } = await supabase
       .from("accounts")
-      .upsert(batch, { onConflict: "id" });
+      .update(fields)
+      .eq("id", id)
+      .eq("user_id", user_id);
     if (error) throw error;
   }
 
