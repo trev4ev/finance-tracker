@@ -291,8 +291,15 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
           ...prev,
           accounts: prev.accounts.map((item) => (item.id === row.id ? row : item)),
         }));
-        void writeCloud((supabase, userId) =>
-          supabase.from("accounts").update(accountToRow(row, userId)).eq("id", row.id),
+        void writeCloud((supabase) =>
+          supabase
+            .from("accounts")
+            .update({
+              name: row.name,
+              type: row.type,
+              starting_balance: row.startingBalance,
+            })
+            .eq("id", row.id),
         );
       },
       deleteAccount: (id) => {
