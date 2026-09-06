@@ -9,7 +9,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Ledger",
     short_name: "Ledger",
     description:
-      "Track accounts, transactions, and budgets. Sync to Supabase and link banks with Plaid.",
+      "Track accounts, transactions, and credit card benefits. Sync to Supabase and link banks with Plaid.",
     start_url: basePath ? `${basePath}/` : "/",
     display: "standalone",
     background_color: "#1C1C1E",

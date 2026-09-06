@@ -3,7 +3,6 @@ import { formatMoney, roundMoney, sameMoney } from "./money";
 import type {
   Account,
   AccountType,
-  Budget,
   Category,
   FinanceState,
   Transaction,
@@ -299,20 +298,6 @@ export function spendingByCategory(
     }))
     .filter((row) => row.amount > 0)
     .sort((a, b) => b.amount - a.amount);
-}
-
-export function spentForBudget(
-  transactions: Transaction[],
-  budget: Budget,
-): number {
-  return transactions
-    .filter(
-      (tx) =>
-        tx.type === "expense" &&
-        tx.categoryId === budget.categoryId &&
-        inMonth(tx, budget.month),
-    )
-    .reduce((sum, tx) => sum + tx.amount, 0);
 }
 
 /** What actually moved in the account (bank charge), even if spending was split. */

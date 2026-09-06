@@ -3,9 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Gift,
   LayoutDashboard,
   List,
-  PiggyBank,
   Settings,
   Wallet,
 } from "lucide-react";
@@ -20,7 +20,7 @@ const links = [
     icon: List,
   },
   { href: "/accounts", label: "Accounts", shortLabel: "Accounts", icon: Wallet },
-  { href: "/budgets", label: "Budgets", shortLabel: "Budgets", icon: PiggyBank },
+  { href: "/benefits", label: "Benefits", shortLabel: "Benefits", icon: Gift },
   {
     href: "/settings",
     label: "Settings",

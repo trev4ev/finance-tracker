@@ -15,6 +15,7 @@ import {
   lookup,
   transactionDetailLabel,
 } from "@/lib/finance";
+import { transactionBenefitName } from "@/lib/benefits";
 import { formatMoney } from "@/lib/money";
 import { useFinance } from "@/lib/store";
 import { transactionsHref } from "@/lib/transactions-href";
@@ -308,6 +309,7 @@ function TransactionsList() {
                         category={lookup(state.categories, tx.categoryId)}
                         account={lookup(state.accounts, tx.accountId)}
                         toAccount={lookup(state.accounts, tx.toAccountId)}
+                        benefitName={transactionBenefitName(state, tx.id)}
                         onClick={() => setEditing(tx)}
                       />
                     </li>
@@ -324,6 +326,7 @@ function TransactionsList() {
                       category={lookup(state.categories, tx.categoryId)}
                       account={lookup(state.accounts, tx.accountId)}
                       toAccount={lookup(state.accounts, tx.toAccountId)}
+                      benefitName={transactionBenefitName(state, tx.id)}
                       onClick={() => setEditing(tx)}
                     />
                   </li>
@@ -389,7 +392,8 @@ function TransactionsList() {
                       ) : null}
                     </p>
                     <p className="text-xs text-muted">
-                      {transactionDetailLabel(tx, state)}
+                      {transactionBenefitName(state, tx.id) ??
+                        transactionDetailLabel(tx, state)}
                     </p>
                   </td>
                   <td className="px-4 py-3 text-muted">{account?.name}</td>

@@ -1,6 +1,7 @@
 import type {
   Account,
-  Budget,
+  BenefitRedemption,
+  CardBenefit,
   DataSource,
   FinanceState,
   PlaidItem,
@@ -28,6 +29,13 @@ const TRANSACTION_DEFAULTS = {
   plaidCategory: null as string | null,
 };
 
+const BENEFIT_DEFAULTS = {
+  expectedAmount: null as number | null,
+  cycleStartMonth: 1,
+  notes: "",
+  active: true,
+};
+
 export function normalizeAccount(
   account: Pick<Account, "id" | "name" | "type" | "startingBalance"> &
     Partial<Account>,
@@ -45,18 +53,56 @@ export function normalizeTransaction(
   };
 }
 
+export function normalizeCardBenefit(
+  benefit: Pick<CardBenefit, "id" | "accountId" | "name" | "frequency"> &
+    Partial<CardBenefit>,
+): CardBenefit {
+  const cycle = Number(benefit.cycleStartMonth ?? BENEFIT_DEFAULTS.cycleStartMonth);
+  return {
+    ...BENEFIT_DEFAULTS,
+    ...benefit,
+    cycleStartMonth:
+      Number.isFinite(cycle) && cycle >= 1 && cycle <= 12 ? Math.round(cycle) : 1,
+    expectedAmount:
+      benefit.expectedAmount === undefined
+        ? BENEFIT_DEFAULTS.expectedAmount
+        : benefit.expectedAmount,
+    notes: benefit.notes ?? "",
+    active: benefit.active ?? true,
+  };
+}
+
+export function normalizeBenefitRedemption(
+  row: BenefitRedemption,
+): BenefitRedemption {
+  return {
+    ...row,
+    transactionId: row.transactionId ?? null,
+    amount: row.amount ?? null,
+    notes: row.notes ?? "",
+  };
+}
+
 export function normalizeState(state: {
-  accounts: Account[] | Array<Pick<Account, "id" | "name" | "type" | "startingBalance"> & Partial<Account>>;
+  accounts:
+    | Account[]
+    | Array<Pick<Account, "id" | "name" | "type" | "startingBalance"> & Partial<Account>>;
   categories: FinanceState["categories"];
   transactions: Transaction[] | Array<TransactionInput & { id: string }>;
-  budgets: Budget[];
+  cardBenefits?: Array<
+    Pick<CardBenefit, "id" | "accountId" | "name" | "frequency"> & Partial<CardBenefit>
+  >;
+  benefitRedemptions?: BenefitRedemption[];
   plaidItems?: PlaidItem[];
 }): FinanceState {
   return {
     accounts: state.accounts.map(normalizeAccount),
     categories: state.categories,
     transactions: state.transactions.map(normalizeTransaction),
-    budgets: state.budgets,
+    cardBenefits: (state.cardBenefits ?? []).map(normalizeCardBenefit),
+    benefitRedemptions: (state.benefitRedemptions ?? []).map(
+      normalizeBenefitRedemption,
+    ),
     plaidItems: state.plaidItems ?? [],
   };
 }
@@ -98,10 +144,16 @@ export function remapStateToUuids(state: FinanceState): FinanceState {
       categoryId: tx.categoryId ? id(tx.categoryId) : null,
       toAccountId: tx.toAccountId ? id(tx.toAccountId) : null,
     })),
-    budgets: state.budgets.map((budget) => ({
-      ...budget,
-      id: id(budget.id)!,
-      categoryId: id(budget.categoryId)!,
+    cardBenefits: state.cardBenefits.map((benefit) => ({
+      ...benefit,
+      id: id(benefit.id)!,
+      accountId: id(benefit.accountId)!,
+    })),
+    benefitRedemptions: state.benefitRedemptions.map((row) => ({
+      ...row,
+      id: id(row.id)!,
+      benefitId: id(row.benefitId)!,
+      transactionId: row.transactionId ? id(row.transactionId) : null,
     })),
     plaidItems: state.plaidItems.map((item) => ({
       ...item,
@@ -111,5 +163,9 @@ export function remapStateToUuids(state: FinanceState): FinanceState {
 }
 
 export function hasUserData(state: FinanceState): boolean {
-  return state.accounts.length > 0 || state.transactions.length > 0;
+  return (
+    state.accounts.length > 0 ||
+    state.transactions.length > 0 ||
+    state.cardBenefits.length > 0
+  );
 }

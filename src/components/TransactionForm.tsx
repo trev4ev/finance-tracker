@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { NativeDateInput, NativeSelect } from "@/components/form-controls";
+import { benefitsForAccount, redemptionForTransaction } from "@/lib/benefits";
 import { formatMoney, parseAmount, sameMoney } from "@/lib/money";
 import { todayISO } from "@/lib/dates";
 import type {
@@ -30,7 +31,7 @@ export function TransactionForm({
 }: {
   state: FinanceState;
   initial?: Transaction;
-  onSubmit: (tx: TransactionInput) => void;
+  onSubmit: (tx: TransactionInput, benefitId: string | null) => void;
   onCancel: () => void;
 }) {
   const [form, setForm] = useState(() =>
@@ -44,10 +45,14 @@ export function TransactionForm({
           categoryId: initial.categoryId ?? "",
           toAccountId: initial.toAccountId ?? "",
           notes: initial.notes,
+          benefitId:
+            redemptionForTransaction(state.benefitRedemptions, initial.id)
+              ?.benefitId ?? "",
         }
       : {
           ...emptyForm,
           accountId: state.accounts[0]?.id ?? "",
+          benefitId: "",
         },
   );
   const [error, setError] = useState("");
@@ -56,6 +61,11 @@ export function TransactionForm({
 
   const categories = state.categories.filter((category) =>
     form.type === "income" ? category.kind === "income" : category.kind === "expense",
+  );
+  const accountBenefits = benefitsForAccount(
+    state.cardBenefits,
+    form.accountId,
+    form.benefitId,
   );
 
   function handleSubmit(event: React.FormEvent) {
@@ -85,18 +95,21 @@ export function TransactionForm({
       setError("Pick two different accounts.");
       return;
     }
-    onSubmit({
-      id: initial?.id,
-      date: form.date,
-      description: form.description.trim(),
-      amount,
-      originalAmount: initial?.originalAmount ?? amount,
-      type: form.type,
-      accountId: form.accountId,
-      categoryId: form.categoryId || null,
-      toAccountId: form.type === "transfer" ? form.toAccountId || null : null,
-      notes: form.notes.trim(),
-    });
+    onSubmit(
+      {
+        id: initial?.id,
+        date: form.date,
+        description: form.description.trim(),
+        amount,
+        originalAmount: initial?.originalAmount ?? amount,
+        type: form.type,
+        accountId: form.accountId,
+        categoryId: form.categoryId || null,
+        toAccountId: form.type === "transfer" ? form.toAccountId || null : null,
+        notes: form.notes.trim(),
+      },
+      form.type === "income" ? form.benefitId || null : null,
+    );
   }
 
   return (
@@ -114,7 +127,9 @@ export function TransactionForm({
             key={type}
             type="button"
             disabled={readOnly}
-            onClick={() => setForm((prev) => ({ ...prev, type, categoryId: "" }))}
+            onClick={() =>
+              setForm((prev) => ({ ...prev, type, categoryId: "", benefitId: "" }))
+            }
             className={`min-h-12 rounded-xl border px-2 text-sm capitalize disabled:cursor-not-allowed ${
               form.type === type
                 ? "border-accent bg-accent/10 text-accent"
@@ -159,7 +174,7 @@ export function TransactionForm({
                 initial.originalAmount,
               )
                 ? "If you covered others, lower this to your share. The original charge is kept."
-                : `Your share for budgets. Original charge ${formatMoney(initial.originalAmount)}.`}
+                : `Your share. Original charge ${formatMoney(initial.originalAmount)}.`}
             </p>
           ) : null}
         </label>
@@ -183,7 +198,18 @@ export function TransactionForm({
           value={form.accountId}
           disabled={readOnly}
           onChange={(event) =>
-            setForm((prev) => ({ ...prev, accountId: event.target.value }))
+            setForm((prev) => {
+              const accountId = event.target.value;
+              const stillValid = benefitsForAccount(
+                state.cardBenefits,
+                accountId,
+              ).some((benefit) => benefit.id === prev.benefitId);
+              return {
+                ...prev,
+                accountId,
+                benefitId: stillValid ? prev.benefitId : "",
+              };
+            })
           }
         >
           {state.accounts.map((account) => (
@@ -231,6 +257,26 @@ export function TransactionForm({
           ))}
         </NativeSelect>
       </div>
+
+      {form.type === "income" && accountBenefits.length > 0 ? (
+        <div className="block text-sm">
+          <span className="mb-1 block text-muted">Card benefit</span>
+          <NativeSelect
+            value={form.benefitId}
+            disabled={readOnly}
+            onChange={(event) =>
+              setForm((prev) => ({ ...prev, benefitId: event.target.value }))
+            }
+          >
+            <option value="">Not a card benefit</option>
+            {accountBenefits.map((benefit) => (
+              <option key={benefit.id} value={benefit.id}>
+                {benefit.name}
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
+      ) : null}
 
       {showNotes ? (
         <label className="block text-sm">

@@ -314,6 +314,18 @@ export function createDemoState(): FinanceState {
 
     transactions.push({
       id: id(),
+      date: `${month}-08`,
+      description: "Dining credit",
+      amount: 10,
+      type: "income",
+      accountId: "acc-credit",
+      categoryId: null,
+      toAccountId: null,
+      notes: "Statement credit",
+    });
+
+    transactions.push({
+      id: id(),
       date: `${month}-22`,
       description: "Credit card payment",
       amount: roundMoney(420 + rand() * 280),
@@ -338,16 +350,62 @@ export function createDemoState(): FinanceState {
   }
 
   const month = currentMonth();
-  const budgets = [
-    { id: "bud-rent", categoryId: "cat-rent", month, amount: 2450 },
-    { id: "bud-groc", categoryId: "cat-groceries", month, amount: 450 },
-    { id: "bud-dine", categoryId: "cat-dining", month, amount: 280 },
-    { id: "bud-trans", categoryId: "cat-transport", month, amount: 120 },
-    { id: "bud-util", categoryId: "cat-utilities", month, amount: 180 },
-    { id: "bud-shop", categoryId: "cat-shopping", month, amount: 200 },
+  const cardBenefits = [
+    {
+      id: "ben-dining",
+      accountId: "acc-credit",
+      name: "Dining credit",
+      frequency: "monthly" as const,
+      expectedAmount: 10,
+      cycleStartMonth: 1,
+      notes: "",
+      active: true,
+    },
+    {
+      id: "ben-travel",
+      accountId: "acc-credit",
+      name: "Travel credit",
+      frequency: "annual" as const,
+      expectedAmount: 300,
+      cycleStartMonth: 1,
+      notes: "",
+      active: true,
+    },
+    {
+      id: "ben-uber",
+      accountId: "acc-credit",
+      name: "Uber Cash",
+      frequency: "semiannual" as const,
+      expectedAmount: 50,
+      cycleStartMonth: 1,
+      notes: "",
+      active: true,
+    },
   ];
+  const diningCredit = transactions.find(
+    (tx) => tx.description === "Dining credit" && tx.date.startsWith(month),
+  );
+  const benefitRedemptions = diningCredit
+    ? [
+        {
+          id: "red-dining",
+          benefitId: "ben-dining",
+          periodStart: month,
+          usedOn: diningCredit.date,
+          transactionId: diningCredit.id,
+          amount: diningCredit.amount,
+          notes: "",
+        },
+      ]
+    : [];
 
-  return normalizeState({ accounts, categories, transactions, budgets });
+  return normalizeState({
+    accounts,
+    categories,
+    transactions,
+    cardBenefits,
+    benefitRedemptions,
+  });
 }
 
 export function emptyState(): FinanceState {
@@ -360,6 +418,7 @@ export function emptyState(): FinanceState {
       { id: crypto.randomUUID(), name: "Dining", kind: "expense", color: "#f97316" },
     ],
     transactions: [],
-    budgets: [],
+    cardBenefits: [],
+    benefitRedemptions: [],
   });
 }

@@ -12,15 +12,23 @@ import {
 import type { User } from "@supabase/supabase-js";
 import {
   accountToRow,
-  budgetToRow,
+  benefitRedemptionToRow,
+  cardBenefitToRow,
   categoryToRow,
   loadFinanceState,
   replaceFinanceState,
   transactionToRow,
 } from "./cloud";
 import {
+  clearPeriodRedemptions,
+  linkTransactionBenefit,
+  upsertPeriodRedemption,
+  type RedemptionPatch,
+} from "./benefits";
+import {
   hasUserData,
   normalizeAccount,
+  normalizeCardBenefit,
   normalizeState,
   normalizeTransaction,
   remapStateToUuids,
@@ -32,7 +40,7 @@ import { isSupabaseConfigured } from "./supabase/env";
 import { plaidAccountsNeedSync } from "./plaid/stale";
 import type {
   Account,
-  Budget,
+  CardBenefit,
   Category,
   FinanceState,
   Transaction,
@@ -59,11 +67,29 @@ type FinanceContextValue = {
   addCategory: (category: Omit<Category, "id">) => void;
   updateCategory: (category: Category) => void;
   deleteCategory: (id: string) => void;
-  addTransaction: (tx: TransactionInput) => void;
-  updateTransaction: (tx: TransactionInput & { id: string }) => void;
+  addTransaction: (tx: TransactionInput, benefitId?: string | null) => string;
+  updateTransaction: (
+    tx: TransactionInput & { id: string },
+    benefitId?: string | null,
+  ) => void;
   deleteTransaction: (id: string) => void;
-  upsertBudget: (budget: Omit<Budget, "id"> & { id?: string }) => void;
-  deleteBudget: (id: string) => void;
+  addBenefit: (
+    benefit: Omit<CardBenefit, "id"> & { id?: string },
+  ) => string;
+  updateBenefit: (benefit: CardBenefit) => void;
+  deleteBenefit: (id: string) => void;
+  markBenefitUsed: (input: {
+    benefitId: string;
+    usedOn: string;
+    transactionId: string | null;
+    amount: number | null;
+    notes: string;
+  }) => void;
+  unmarkBenefit: (benefitId: string, periodStart: string) => void;
+  setTransactionBenefit: (
+    transactionId: string,
+    benefitId: string | null,
+  ) => void;
   importTransactions: (txs: Transaction[]) => void;
   loadDemo: () => void;
   resetAll: () => void;
@@ -73,6 +99,26 @@ const FinanceContext = createContext<FinanceContextValue | null>(null);
 
 function persistLocal(state: FinanceState) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+async function applyRedemptionPatch(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  patch: RedemptionPatch,
+) {
+  if (patch.removeIds.length > 0) {
+    const { error } = await supabase
+      .from("benefit_redemptions")
+      .delete()
+      .in("id", patch.removeIds);
+    if (error) return { error };
+  }
+  if (patch.upsert) {
+    return supabase
+      .from("benefit_redemptions")
+      .upsert(benefitRedemptionToRow(patch.upsert, userId));
+  }
+  return { error: null };
 }
 
 function readLocal(): FinanceState | null {
@@ -232,6 +278,15 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     [cloudEnabled, refresh],
   );
 
+  const writeRedemptionPatch = useCallback(
+    (patch: RedemptionPatch) => {
+      void writeCloud((supabase, userId) =>
+        applyRedemptionPatch(supabase, userId, patch),
+      );
+    },
+    [writeCloud],
+  );
+
   const commit = useCallback(
     (updater: (prev: FinanceState) => FinanceState) => {
       setState((prev) => {
@@ -309,6 +364,15 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
           transactions: prev.transactions.filter(
             (tx) => tx.accountId !== id && tx.toAccountId !== id,
           ),
+          cardBenefits: prev.cardBenefits.filter(
+            (benefit) => benefit.accountId !== id,
+          ),
+          benefitRedemptions: prev.benefitRedemptions.filter((row) => {
+            const benefit = prev.cardBenefits.find(
+              (item) => item.id === row.benefitId,
+            );
+            return benefit?.accountId !== id;
+          }),
         }));
         void writeCloud((supabase) => supabase.from("accounts").delete().eq("id", id));
       },
@@ -337,74 +401,136 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
           transactions: prev.transactions.map((tx) =>
             tx.categoryId === id ? { ...tx, categoryId: null } : tx,
           ),
-          budgets: prev.budgets.filter((budget) => budget.categoryId !== id),
         }));
         void writeCloud((supabase) => supabase.from("categories").delete().eq("id", id));
       },
-      addTransaction: (tx) => {
+      addTransaction: (tx, benefitId) => {
         const row = normalizeTransaction({ ...tx, id: crypto.randomUUID() });
-        commit((prev) => ({
-          ...prev,
-          transactions: [...prev.transactions, row],
-        }));
-        void writeCloud((supabase, userId) =>
-          supabase.from("transactions").insert(transactionToRow(row, userId)),
-        );
+        let patch: RedemptionPatch | null = null;
+        commit((prev) => {
+          const withTx = {
+            ...prev,
+            transactions: [...prev.transactions, row],
+          };
+          if (!benefitId) return withTx;
+          const next = linkTransactionBenefit(withTx, row.id, benefitId);
+          patch = next;
+          return { ...withTx, benefitRedemptions: next.redemptions };
+        });
+        void writeCloud(async (supabase, userId) => {
+          const inserted = await supabase
+            .from("transactions")
+            .insert(transactionToRow(row, userId));
+          if (inserted.error) return inserted;
+          if (!patch) return { error: null };
+          return applyRedemptionPatch(supabase, userId, patch);
+        });
+        return row.id;
       },
-      updateTransaction: (tx) => {
+      updateTransaction: (tx, benefitId) => {
         const existing = state.transactions.find((item) => item.id === tx.id);
         if (existing?.pending) return;
         const row = normalizeTransaction(tx);
-        commit((prev) => ({
-          ...prev,
-          transactions: prev.transactions.map((item) =>
-            item.id === row.id ? row : item,
-          ),
-        }));
-        void writeCloud((supabase, userId) =>
-          supabase.from("transactions").update(transactionToRow(row, userId)).eq("id", row.id),
-        );
+        let patch: RedemptionPatch | null = null;
+        commit((prev) => {
+          const withTx = {
+            ...prev,
+            transactions: prev.transactions.map((item) =>
+              item.id === row.id ? row : item,
+            ),
+          };
+          if (benefitId === undefined) return withTx;
+          const next = linkTransactionBenefit(withTx, row.id, benefitId);
+          patch = next;
+          return { ...withTx, benefitRedemptions: next.redemptions };
+        });
+        void writeCloud(async (supabase, userId) => {
+          const updated = await supabase
+            .from("transactions")
+            .update(transactionToRow(row, userId))
+            .eq("id", row.id);
+          if (updated.error) return updated;
+          if (!patch) return { error: null };
+          return applyRedemptionPatch(supabase, userId, patch);
+        });
       },
       deleteTransaction: (id) => {
         commit((prev) => ({
           ...prev,
           transactions: prev.transactions.filter((tx) => tx.id !== id),
+          benefitRedemptions: prev.benefitRedemptions.map((row) =>
+            row.transactionId === id ? { ...row, transactionId: null } : row,
+          ),
         }));
         void writeCloud((supabase) => supabase.from("transactions").delete().eq("id", id));
       },
-      upsertBudget: (budget) => {
-        let saved: Budget | null = null;
-        commit((prev) => {
-          const existing = prev.budgets.find(
-            (item) =>
-              item.id === budget.id ||
-              (item.categoryId === budget.categoryId && item.month === budget.month),
-          );
-          if (existing) {
-            saved = { ...existing, amount: budget.amount };
-            return {
-              ...prev,
-              budgets: prev.budgets.map((item) =>
-                item.id === existing.id ? saved! : item,
-              ),
-            };
-          }
-          saved = { ...budget, id: crypto.randomUUID() };
-          return { ...prev, budgets: [...prev.budgets, saved] };
+      addBenefit: (benefit) => {
+        const row = normalizeCardBenefit({
+          ...benefit,
+          id: benefit.id ?? crypto.randomUUID(),
         });
-        if (saved) {
-          const row = saved;
-          void writeCloud((supabase, userId) =>
-            supabase.from("budgets").upsert(budgetToRow(row, userId)),
-          );
-        }
-      },
-      deleteBudget: (id) => {
         commit((prev) => ({
           ...prev,
-          budgets: prev.budgets.filter((budget) => budget.id !== id),
+          cardBenefits: [...prev.cardBenefits, row],
         }));
-        void writeCloud((supabase) => supabase.from("budgets").delete().eq("id", id));
+        void writeCloud((supabase, userId) =>
+          supabase.from("card_benefits").insert(cardBenefitToRow(row, userId)),
+        );
+        return row.id;
+      },
+      updateBenefit: (benefit) => {
+        const row = normalizeCardBenefit(benefit);
+        commit((prev) => ({
+          ...prev,
+          cardBenefits: prev.cardBenefits.map((item) =>
+            item.id === row.id ? row : item,
+          ),
+        }));
+        void writeCloud((supabase, userId) =>
+          supabase
+            .from("card_benefits")
+            .update(cardBenefitToRow(row, userId))
+            .eq("id", row.id),
+        );
+      },
+      deleteBenefit: (id) => {
+        commit((prev) => ({
+          ...prev,
+          cardBenefits: prev.cardBenefits.filter((item) => item.id !== id),
+          benefitRedemptions: prev.benefitRedemptions.filter(
+            (row) => row.benefitId !== id,
+          ),
+        }));
+        void writeCloud((supabase) =>
+          supabase.from("card_benefits").delete().eq("id", id),
+        );
+      },
+      markBenefitUsed: (input) => {
+        let patch: RedemptionPatch | null = null;
+        commit((prev) => {
+          const next = upsertPeriodRedemption(prev, input);
+          patch = next;
+          return { ...prev, benefitRedemptions: next.redemptions };
+        });
+        if (patch) writeRedemptionPatch(patch);
+      },
+      unmarkBenefit: (benefitId, periodStart) => {
+        let patch: RedemptionPatch | null = null;
+        commit((prev) => {
+          const next = clearPeriodRedemptions(prev, benefitId, periodStart);
+          patch = next;
+          return { ...prev, benefitRedemptions: next.redemptions };
+        });
+        if (patch) writeRedemptionPatch(patch);
+      },
+      setTransactionBenefit: (transactionId, benefitId) => {
+        let patch: RedemptionPatch | null = null;
+        commit((prev) => {
+          const next = linkTransactionBenefit(prev, transactionId, benefitId);
+          patch = next;
+          return { ...prev, benefitRedemptions: next.redemptions };
+        });
+        if (patch) writeRedemptionPatch(patch);
       },
       importTransactions: (txs) => {
         const rows = txs.map((tx) => normalizeTransaction(tx));
@@ -441,7 +567,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         }
       },
     }),
-    [commit, cloudEnabled, error, hydrated, refresh, state, syncPlaid, syncing, user, writeCloud],
+    [commit, cloudEnabled, error, hydrated, refresh, state, syncPlaid, syncing, user, writeCloud, writeRedemptionPatch],
   );
 
   return (
