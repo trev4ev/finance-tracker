@@ -29,6 +29,7 @@ import {
   sortTransactions,
   spendingByCategory,
 } from "@/lib/finance";
+import { transactionBenefitName } from "@/lib/benefits";
 import { formatMoney, formatSignedMoney } from "@/lib/money";
 import { useFinance } from "@/lib/store";
 import { transactionsHref } from "@/lib/transactions-href";
@@ -261,6 +262,7 @@ export default function OverviewPage() {
                 category={lookup(state.categories, tx.categoryId)}
                 account={lookup(state.accounts, tx.accountId)}
                 toAccount={lookup(state.accounts, tx.toAccountId)}
+                benefitName={transactionBenefitName(state, tx.id)}
                 onClick={() => setEditing(tx)}
               />
             </li>
@@ -329,6 +331,7 @@ export default function OverviewPage() {
                   category={lookup(state.categories, tx.categoryId)}
                   account={lookup(state.accounts, tx.accountId)}
                   toAccount={lookup(state.accounts, tx.toAccountId)}
+                  benefitName={transactionBenefitName(state, tx.id)}
                   onClick={() => setEditing(tx)}
                 />
               </li>

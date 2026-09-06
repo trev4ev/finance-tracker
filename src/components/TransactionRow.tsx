@@ -9,18 +9,20 @@ export function TransactionRow({
   category,
   account,
   toAccount,
+  benefitName,
   onClick,
 }: {
   tx: Transaction;
   category?: Category;
   account?: Account;
   toAccount?: Account;
+  benefitName?: string;
   onClick: () => void;
 }) {
   const subtitle =
     tx.type === "transfer"
       ? `${account?.name ?? "Account"} → ${toAccount?.name ?? "Account"}`
-      : [category?.name ?? "Uncategorized", account?.name]
+      : [benefitName ?? category?.name ?? "Uncategorized", account?.name]
           .filter(Boolean)
           .join(" · ");
   const color = category?.color ?? "#64748b";
