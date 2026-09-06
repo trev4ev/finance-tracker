@@ -80,13 +80,6 @@ export const SAPPHIRE_RESERVE_BENEFITS: CatalogBenefit[] = [
     cycleStartMonth: 1,
     notes: "$10 monthly in-app Lyft credit through Sep 30, 2027. Not Wait & Save, bikes, or scooters.",
   },
-  {
-    name: "Peloton membership",
-    frequency: "monthly",
-    expectedAmount: 10,
-    cycleStartMonth: 1,
-    notes: "$10/month toward Peloton memberships through Dec 31, 2027. Activation required. Hide this if you don't use Peloton.",
-  },
 ];
 
 export const AMEX_GOLD_BENEFITS: CatalogBenefit[] = [
@@ -136,20 +129,6 @@ export const UNITED_EXPLORER_BENEFITS: CatalogBenefit[] = [
     notes: "$5/month, up to $60/year. Yearly opt-in required. Uber, Lyft, taxi, limo — not Uber Eats.",
   },
   {
-    name: "United Hotels (1st stay)",
-    frequency: "annual",
-    expectedAmount: 50,
-    cycleStartMonth: 1,
-    notes: "$50 back on 1st prepaid United Hotels stay each anniversary year (up to $100 on two stays).",
-  },
-  {
-    name: "United Hotels (2nd stay)",
-    frequency: "annual",
-    expectedAmount: 50,
-    cycleStartMonth: 1,
-    notes: "$50 back on 2nd prepaid United Hotels stay each anniversary year.",
-  },
-  {
     name: "Avis/Budget TravelBank (1st)",
     frequency: "annual",
     expectedAmount: 25,
@@ -162,19 +141,5 @@ export const UNITED_EXPLORER_BENEFITS: CatalogBenefit[] = [
     expectedAmount: 25,
     cycleStartMonth: 1,
     notes: "$25 United TravelBank on 2nd Avis/Budget rental via cars.united.com.",
-  },
-  {
-    name: "United travel ($10k spend)",
-    frequency: "annual",
-    expectedAmount: 100,
-    cycleStartMonth: 1,
-    notes: "$100 United travel credit after $10,000 calendar-year spend.",
-  },
-  {
-    name: "JSX flights",
-    frequency: "annual",
-    expectedAmount: 100,
-    cycleStartMonth: 1,
-    notes: "Up to $100/year on flights booked directly with JSX. Hide if you don't fly JSX.",
   },
 ];
