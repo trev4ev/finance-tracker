@@ -1,7 +1,14 @@
-import { addDays, datesInMonth, daysBetween, todayISO } from "./dates";
+import {
+  addDays,
+  datesInMonth,
+  daysBetween,
+  timestampToISODate,
+  todayISO,
+} from "./dates";
 import { formatMoney, roundMoney, sameMoney } from "./money";
 import type {
   Account,
+  AccountBalance,
   AccountType,
   Category,
   FinanceState,
@@ -81,13 +88,19 @@ export function historyRangeStart(
   range: HistoryRange,
   transactions: Transaction[],
   endDate = todayISO(),
+  snapshots: AccountBalance[] = [],
 ): string {
-  let earliestTx: string | null = null;
+  let earliest: string | null = null;
   for (const tx of transactions) {
-    if (!earliestTx || tx.date < earliestTx) earliestTx = tx.date;
+    if (!earliest || tx.date < earliest) earliest = tx.date;
   }
-  const opening = earliestTx
-    ? addDays(earliestTx, -1)
+  for (const snap of snapshots) {
+    if (snap.current == null) continue;
+    const date = timestampToISODate(snap.asOf);
+    if (!earliest || date < earliest) earliest = date;
+  }
+  const opening = earliest
+    ? addDays(earliest, -1)
     : addDays(endDate, -90);
 
   if (range === "all") {
@@ -114,22 +127,26 @@ export function historicalBalances(
   transactions: Transaction[],
   fromDate: string,
   toDate: string,
+  snapshots: AccountBalance[] = [],
 ): BalanceSnapshot[] {
   if (accounts.length === 0) return [];
   if (fromDate > toDate) return [];
 
   const running = new Map<string, number>();
+  const snapByAccountDate = new Map<string, Map<string, number>>();
+  const skipTxUntil = new Map<string, string>();
+
   for (const account of accounts) {
-    const live = accountBalance(account, transactions);
-    const reconstructed = ledgerBalance(account, transactions);
-    const offset = live - reconstructed;
-    let balance = account.startingBalance + offset;
-    for (const tx of transactions) {
-      if (tx.date < fromDate) {
-        balance += transactionEffectOnAccount(tx, account.id);
-      }
-    }
-    running.set(account.id, roundMoney(balance));
+    const byDate = snapshotValuesByDate(account, snapshots, toDate);
+    snapByAccountDate.set(account.id, byDate);
+    const opening = openingHistoricalBalance(
+      account,
+      transactions,
+      fromDate,
+      byDate,
+    );
+    running.set(account.id, opening.balance);
+    if (opening.skipTxUntil) skipTxUntil.set(account.id, opening.skipTxUntil);
   }
 
   const span = Math.max(1, daysBetween(fromDate, toDate));
@@ -149,11 +166,17 @@ export function historicalBalances(
   const dated = transactions
     .filter((tx) => tx.date >= fromDate && tx.date <= toDate)
     .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  const snapEvents = snapshotEventsInRange(
+    snapByAccountDate,
+    fromDate,
+    toDate,
+  );
 
   const points: BalanceSnapshot[] = [];
-  let cursor = 0;
+  let txCursor = 0;
+  let snapCursor = 0;
 
-  const snapshot = (date: string): BalanceSnapshot => {
+  const pointAt = (date: string): BalanceSnapshot => {
     const balances: Record<string, number> = {};
     let total = 0;
     for (const account of accounts) {
@@ -165,31 +188,138 @@ export function historicalBalances(
   };
 
   for (const date of sampleDates) {
-    while (cursor < dated.length && dated[cursor]!.date <= date) {
-      applyTransaction(running, dated[cursor]!);
-      cursor += 1;
+    while (true) {
+      const tx = dated[txCursor];
+      const snap = snapEvents[snapCursor];
+      const txReady = tx != null && tx.date <= date;
+      const snapReady = snap != null && snap.date <= date;
+      if (!txReady && !snapReady) break;
+      if (txReady && (!snapReady || tx.date <= snap.date)) {
+        applyTransaction(running, tx, skipTxUntil);
+        txCursor += 1;
+      } else if (snap) {
+        running.set(snap.accountId, roundMoney(snap.value));
+        const skip = skipTxUntil.get(snap.accountId);
+        if (skip && snap.date >= skip) skipTxUntil.delete(snap.accountId);
+        snapCursor += 1;
+      } else {
+        break;
+      }
     }
-    points.push(snapshot(date));
+    points.push(pointAt(date));
   }
 
   return points;
 }
 
-function applyTransaction(running: Map<string, number>, tx: Transaction) {
-  const fromDelta = transactionEffectOnAccount(tx, tx.accountId);
-  if (fromDelta !== 0 && running.has(tx.accountId)) {
-    running.set(
-      tx.accountId,
-      roundMoney((running.get(tx.accountId) ?? 0) + fromDelta),
-    );
+function snapshotValuesByDate(
+  account: Account,
+  snapshots: AccountBalance[],
+  toDate: string,
+): Map<string, number> {
+  const dated: { date: string; asOf: string; value: number }[] = [];
+  for (const snap of snapshots) {
+    if (snap.accountId !== account.id || snap.current == null) continue;
+    dated.push({
+      date: timestampToISODate(snap.asOf),
+      asOf: snap.asOf,
+      value: snap.current,
+    });
   }
-  if (!tx.toAccountId) return;
-  const toDelta = transactionEffectOnAccount(tx, tx.toAccountId);
-  if (toDelta !== 0 && running.has(tx.toAccountId)) {
-    running.set(
-      tx.toAccountId,
-      roundMoney((running.get(tx.toAccountId) ?? 0) + toDelta),
-    );
+  dated.sort(
+    (a, b) => a.asOf.localeCompare(b.asOf) || a.date.localeCompare(b.date),
+  );
+  const byDate = new Map<string, number>();
+  for (const row of dated) byDate.set(row.date, row.value);
+
+  if (
+    byDate.size > 0 &&
+    account.source === "plaid" &&
+    account.currentBalance != null
+  ) {
+    const raw = account.lastSyncedAt
+      ? timestampToISODate(account.lastSyncedAt)
+      : toDate;
+    const date = raw > toDate ? toDate : raw;
+    byDate.set(date, account.currentBalance);
+  }
+  return byDate;
+}
+
+function openingHistoricalBalance(
+  account: Account,
+  transactions: Transaction[],
+  fromDate: string,
+  byDate: Map<string, number>,
+): { balance: number; skipTxUntil: string | null } {
+  if (byDate.size === 0) {
+    const live = accountBalance(account, transactions);
+    const reconstructed = ledgerBalance(account, transactions);
+    const offset = live - reconstructed;
+    let balance = account.startingBalance + offset;
+    for (const tx of transactions) {
+      if (tx.date < fromDate) {
+        balance += transactionEffectOnAccount(tx, account.id);
+      }
+    }
+    return { balance: roundMoney(balance), skipTxUntil: null };
+  }
+
+  const dates = [...byDate.keys()].sort();
+  const firstDate = dates[0]!;
+  if (firstDate >= fromDate) {
+    return {
+      balance: roundMoney(byDate.get(firstDate)!),
+      skipTxUntil: firstDate,
+    };
+  }
+
+  let priorDate = firstDate;
+  for (const date of dates) {
+    if (date < fromDate) priorDate = date;
+    else break;
+  }
+  let balance = byDate.get(priorDate)!;
+  for (const tx of transactions) {
+    if (tx.date > priorDate && tx.date < fromDate) {
+      balance += transactionEffectOnAccount(tx, account.id);
+    }
+  }
+  return { balance: roundMoney(balance), skipTxUntil: null };
+}
+
+function snapshotEventsInRange(
+  snapByAccountDate: Map<string, Map<string, number>>,
+  fromDate: string,
+  toDate: string,
+): { date: string; accountId: string; value: number }[] {
+  const events: { date: string; accountId: string; value: number }[] = [];
+  for (const [accountId, byDate] of snapByAccountDate) {
+    for (const [date, value] of byDate) {
+      if (date < fromDate || date > toDate) continue;
+      events.push({ date, accountId, value });
+    }
+  }
+  events.sort(
+    (a, b) => a.date.localeCompare(b.date) || a.accountId.localeCompare(b.accountId),
+  );
+  return events;
+}
+
+function applyTransaction(
+  running: Map<string, number>,
+  tx: Transaction,
+  skipTxUntil: Map<string, string>,
+) {
+  const apply = (accountId: string, delta: number) => {
+    if (delta === 0 || !running.has(accountId)) return;
+    const skip = skipTxUntil.get(accountId);
+    if (skip && tx.date <= skip) return;
+    running.set(accountId, roundMoney((running.get(accountId) ?? 0) + delta));
+  };
+  apply(tx.accountId, transactionEffectOnAccount(tx, tx.accountId));
+  if (tx.toAccountId) {
+    apply(tx.toAccountId, transactionEffectOnAccount(tx, tx.toAccountId));
   }
 }
 

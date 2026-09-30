@@ -47,9 +47,20 @@ export default function AccountsPage() {
 
   const historyPoints = useMemo(() => {
     const to = historyRangeEnd(state.transactions);
-    const from = historyRangeStart(range, state.transactions, to);
-    return historicalBalances(state.accounts, state.transactions, from, to);
-  }, [range, state.accounts, state.transactions]);
+    const from = historyRangeStart(
+      range,
+      state.transactions,
+      to,
+      state.accountBalances,
+    );
+    return historicalBalances(
+      state.accounts,
+      state.transactions,
+      from,
+      to,
+      state.accountBalances,
+    );
+  }, [range, state.accountBalances, state.accounts, state.transactions]);
 
   if (!hydrated) {
     return <div className="h-40 animate-pulse rounded-2xl bg-surface" />;
@@ -63,7 +74,8 @@ export default function AccountsPage() {
             Accounts
           </h2>
           <p className="hidden text-sm text-muted sm:block">
-            Starting balances plus every income, expense, and transfer.
+            Starting balances plus cash activity. Linked investments follow
+            each sync&apos;s market value.
           </p>
         </div>
         <div className="no-scrollbar flex gap-2 overflow-x-auto">
@@ -110,7 +122,7 @@ export default function AccountsPage() {
             <div>
               <h3 className="font-medium">Balance history</h3>
               <p className="hidden text-sm text-muted sm:block">
-                How each account has moved over time.
+                Cash activity plus each linked-account sync.
               </p>
             </div>
             <SegmentedControl
@@ -142,6 +154,13 @@ export default function AccountsPage() {
             selectedAccountId={selectedId}
             onSelectAccount={setSelectedAccountId}
           />
+          {state.accounts.find((account) => account.id === selectedId)
+            ?.type === "investment" ? (
+            <p className="text-center text-[11px] text-muted">
+              Investment market value is recorded on each sync, not from
+              cash transactions.
+            </p>
+          ) : null}
         </section>
       ) : null}
 
