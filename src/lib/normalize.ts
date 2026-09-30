@@ -1,5 +1,6 @@
 import type {
   Account,
+  AccountBalance,
   BenefitRedemption,
   CardBenefit,
   DataSource,
@@ -83,6 +84,18 @@ export function normalizeBenefitRedemption(
   };
 }
 
+export function normalizeAccountBalance(row: AccountBalance): AccountBalance {
+  return {
+    id: row.id,
+    accountId: row.accountId,
+    current: row.current,
+    available: row.available,
+    currency: row.currency || "USD",
+    source: row.source ?? "plaid",
+    asOf: row.asOf,
+  };
+}
+
 export function normalizeState(state: {
   accounts:
     | Account[]
@@ -94,6 +107,7 @@ export function normalizeState(state: {
   >;
   benefitRedemptions?: BenefitRedemption[];
   plaidItems?: PlaidItem[];
+  accountBalances?: AccountBalance[];
 }): FinanceState {
   return {
     accounts: state.accounts.map(normalizeAccount),
@@ -104,6 +118,7 @@ export function normalizeState(state: {
       normalizeBenefitRedemption,
     ),
     plaidItems: state.plaidItems ?? [],
+    accountBalances: (state.accountBalances ?? []).map(normalizeAccountBalance),
   };
 }
 
@@ -158,6 +173,11 @@ export function remapStateToUuids(state: FinanceState): FinanceState {
     plaidItems: state.plaidItems.map((item) => ({
       ...item,
       id: id(item.id)!,
+    })),
+    accountBalances: state.accountBalances.map((row) => ({
+      ...row,
+      id: id(row.id)!,
+      accountId: id(row.accountId)!,
     })),
   };
 }

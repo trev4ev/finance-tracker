@@ -13,6 +13,18 @@ export type CategoryKind = "income" | "expense";
 
 export type DataSource = "manual" | "plaid";
 
+export type BalanceSource = DataSource | "computed";
+
+export interface AccountBalance {
+  id: string;
+  accountId: string;
+  current: number | null;
+  available: number | null;
+  currency: string;
+  source: BalanceSource;
+  asOf: string;
+}
+
 export type BenefitFrequency = "monthly" | "semiannual" | "annual";
 
 export interface Account {
@@ -108,6 +120,7 @@ export interface FinanceState {
   cardBenefits: CardBenefit[];
   benefitRedemptions: BenefitRedemption[];
   plaidItems: PlaidItem[];
+  accountBalances: AccountBalance[];
 }
 
 export const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [

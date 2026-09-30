@@ -373,6 +373,9 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
             );
             return benefit?.accountId !== id;
           }),
+          accountBalances: prev.accountBalances.filter(
+            (row) => row.accountId !== id,
+          ),
         }));
         void writeCloud((supabase) => supabase.from("accounts").delete().eq("id", id));
       },

@@ -99,8 +99,8 @@ export function BalanceHistoryChart({
       };
     }
 
-    let yMin = 0;
-    let yMax = 0;
+    let yMin = Infinity;
+    let yMax = -Infinity;
     for (const point of points) {
       if (selectedAccount) {
         const value = point.balances[selectedAccount.id] ?? 0;
@@ -117,6 +117,10 @@ export function BalanceHistoryChart({
         yMin = Math.min(yMin, debts, point.netWorth);
         yMax = Math.max(yMax, assets, point.netWorth);
       }
+    }
+    if (!Number.isFinite(yMin) || !Number.isFinite(yMax)) {
+      yMin = 0;
+      yMax = 1;
     }
     if (yMin === yMax) {
       yMin -= 1;
@@ -144,7 +148,7 @@ export function BalanceHistoryChart({
         let y0 = 0;
         let y1 = 0;
         if (selectedAccount) {
-          y0 = 0;
+          y0 = geometry.yMin;
           y1 = point.balances[layer.id] ?? 0;
         } else {
           let pos = 0;
