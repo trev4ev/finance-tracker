@@ -405,6 +405,15 @@ export function createDemoState(): FinanceState {
     transactions,
     cardBenefits,
     benefitRedemptions,
+    accountBalances: months.map((month, index) => ({
+      id: `bal-brokerage-${index}`,
+      accountId: "acc-brokerage",
+      current: [11820, 12040, 12210, 12450][index] ?? 12450,
+      available: null,
+      currency: "USD",
+      source: "manual" as const,
+      asOf: `${month}-15`,
+    })),
   });
 }
 
