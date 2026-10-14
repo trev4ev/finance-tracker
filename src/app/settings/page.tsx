@@ -13,6 +13,7 @@ export default function SettingsPage() {
     hydrated,
     addCategory,
     deleteCategory,
+    deleteCategoryRule,
     importTransactions,
     loadDemo,
     resetAll,
@@ -145,6 +146,43 @@ export default function SettingsPage() {
             </li>
           ))}
         </ul>
+        {state.categoryRules.length > 0 ? (
+          <div className="mt-5 border-t border-border pt-4">
+            <h4 className="mb-2 text-sm font-medium">Merchant rules</h4>
+            <p className="mb-3 text-sm text-muted">
+              Future matching charges, and any you applied a rule to, use this
+              category instead of the bank&apos;s guess.
+            </p>
+            <ul className="divide-y divide-border">
+              {state.categoryRules.map((rule) => {
+                const category = state.categories.find(
+                  (item) => item.id === rule.categoryId,
+                );
+                return (
+                  <li
+                    key={rule.id}
+                    className="flex min-h-12 items-center justify-between gap-3 py-1 text-sm"
+                  >
+                    <span className="min-w-0 truncate">
+                      {rule.merchantKey}
+                      <span className="text-muted">
+                        {" "}
+                        → {category?.name ?? "Category"}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      className="inline-flex h-11 items-center px-2 text-sm text-muted active:text-expense"
+                      onClick={() => deleteCategoryRule(rule.id)}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
       </section>
 
       <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5">

@@ -15,10 +15,15 @@ export function TransactionModal({
   editing: Transaction | "new";
   state: FinanceState;
   onClose: () => void;
-  onAdd: (tx: TransactionInput, benefitId?: string | null) => string;
+  onAdd: (
+    tx: TransactionInput,
+    benefitId?: string | null,
+    options?: { applyRule?: boolean },
+  ) => string;
   onUpdate: (
     tx: TransactionInput & { id: string },
     benefitId?: string | null,
+    options?: { applyRule?: boolean },
   ) => void;
   onDelete: (id: string) => void;
 }) {
@@ -39,10 +44,11 @@ export function TransactionModal({
         state={state}
         initial={editing === "new" ? undefined : editing}
         onCancel={onClose}
-        onSubmit={(tx, benefitId) => {
+        onSubmit={(tx, benefitId, applyRule) => {
           if (pending) return;
-          if (editing === "new") onAdd(tx, benefitId);
-          else onUpdate({ ...editing, ...tx, id: editing.id }, benefitId);
+          const options = applyRule ? { applyRule: true } : undefined;
+          if (editing === "new") onAdd(tx, benefitId, options);
+          else onUpdate({ ...editing, ...tx, id: editing.id }, benefitId, options);
           onClose();
         }}
       />

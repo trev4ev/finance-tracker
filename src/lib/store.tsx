@@ -14,6 +14,7 @@ import {
   accountToRow,
   benefitRedemptionToRow,
   cardBenefitToRow,
+  categoryRuleToRow,
   categoryToRow,
   loadFinanceState,
   replaceFinanceState,
@@ -38,10 +39,12 @@ import { invokeFunction } from "./functions";
 import { createClient } from "./supabase/client";
 import { isSupabaseConfigured } from "./supabase/env";
 import { plaidAccountsNeedSync } from "./plaid/stale";
+import { applyCategoryRule, merchantKey } from "./rules";
 import type {
   Account,
   CardBenefit,
   Category,
+  CategoryRule,
   FinanceState,
   Transaction,
   TransactionInput,
@@ -67,12 +70,18 @@ type FinanceContextValue = {
   addCategory: (category: Omit<Category, "id">) => void;
   updateCategory: (category: Category) => void;
   deleteCategory: (id: string) => void;
-  addTransaction: (tx: TransactionInput, benefitId?: string | null) => string;
+  addTransaction: (
+    tx: TransactionInput,
+    benefitId?: string | null,
+    options?: { applyRule?: boolean },
+  ) => string;
   updateTransaction: (
     tx: TransactionInput & { id: string },
     benefitId?: string | null,
+    options?: { applyRule?: boolean },
   ) => void;
   deleteTransaction: (id: string) => void;
+  deleteCategoryRule: (id: string) => void;
   addBenefit: (
     benefit: Omit<CardBenefit, "id"> & { id?: string },
   ) => string;
@@ -99,6 +108,66 @@ const FinanceContext = createContext<FinanceContextValue | null>(null);
 
 function persistLocal(state: FinanceState) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function withAppliedRule(
+  state: FinanceState,
+  tx: Transaction,
+): {
+  state: FinanceState;
+  rule: CategoryRule | null;
+  recategorized: Transaction[];
+} {
+  const key = merchantKey(tx.merchantName, tx.description);
+  if (!key || !tx.categoryId) {
+    return { state, rule: null, recategorized: [] };
+  }
+  const existing = state.categoryRules.find((rule) => rule.merchantKey === key);
+  const rule: CategoryRule = existing
+    ? { ...existing, categoryId: tx.categoryId }
+    : { id: crypto.randomUUID(), merchantKey: key, categoryId: tx.categoryId };
+  const transactions = applyCategoryRule(
+    state.transactions,
+    state.categories,
+    key,
+    tx.categoryId,
+  );
+  const recategorized = transactions.filter((item, index) => {
+    const before = state.transactions[index];
+    return before != null && before.categoryId !== item.categoryId;
+  });
+  return {
+    state: {
+      ...state,
+      transactions,
+      categoryRules: existing
+        ? state.categoryRules.map((item) => (item.id === rule.id ? rule : item))
+        : [...state.categoryRules, rule],
+    },
+    rule,
+    recategorized,
+  };
+}
+
+async function persistAppliedRule(
+  supabase: ReturnType<typeof createClient>,
+  userId: string,
+  rule: CategoryRule | null,
+  recategorized: Transaction[],
+): Promise<{ error: { message: string } | null }> {
+  if (!rule) return { error: null };
+  const saved = await supabase
+    .from("category_rules")
+    .upsert(categoryRuleToRow(rule, userId));
+  if (saved.error) return saved;
+  for (const tx of recategorized) {
+    const updated = await supabase
+      .from("transactions")
+      .update({ category_id: tx.categoryId })
+      .eq("id", tx.id);
+    if (updated.error) return updated;
+  }
+  return { error: null };
 }
 
 async function applyRedemptionPatch(
@@ -401,40 +470,59 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         commit((prev) => ({
           ...prev,
           categories: prev.categories.filter((item) => item.id !== id),
+          categoryRules: prev.categoryRules.filter(
+            (rule) => rule.categoryId !== id,
+          ),
           transactions: prev.transactions.map((tx) =>
             tx.categoryId === id ? { ...tx, categoryId: null } : tx,
           ),
         }));
         void writeCloud((supabase) => supabase.from("categories").delete().eq("id", id));
       },
-      addTransaction: (tx, benefitId) => {
+      addTransaction: (tx, benefitId, options) => {
         const row = normalizeTransaction({ ...tx, id: crypto.randomUUID() });
         let patch: RedemptionPatch | null = null;
+        let rule: CategoryRule | null = null;
+        let recategorized: Transaction[] = [];
         commit((prev) => {
           const withTx = {
             ...prev,
             transactions: [...prev.transactions, row],
           };
-          if (!benefitId) return withTx;
-          const next = linkTransactionBenefit(withTx, row.id, benefitId);
+          const withRule = options?.applyRule
+            ? withAppliedRule(withTx, row)
+            : { state: withTx, rule: null, recategorized: [] as Transaction[] };
+          rule = withRule.rule;
+          recategorized = withRule.recategorized;
+          if (!benefitId) return withRule.state;
+          const next = linkTransactionBenefit(withRule.state, row.id, benefitId);
           patch = next;
-          return { ...withTx, benefitRedemptions: next.redemptions };
+          return { ...withRule.state, benefitRedemptions: next.redemptions };
         });
         void writeCloud(async (supabase, userId) => {
           const inserted = await supabase
             .from("transactions")
             .insert(transactionToRow(row, userId));
           if (inserted.error) return inserted;
+          const ruleError = await persistAppliedRule(
+            supabase,
+            userId,
+            rule,
+            recategorized,
+          );
+          if (ruleError.error) return ruleError;
           if (!patch) return { error: null };
           return applyRedemptionPatch(supabase, userId, patch);
         });
         return row.id;
       },
-      updateTransaction: (tx, benefitId) => {
+      updateTransaction: (tx, benefitId, options) => {
         const existing = state.transactions.find((item) => item.id === tx.id);
         if (existing?.pending) return;
         const row = normalizeTransaction(tx);
         let patch: RedemptionPatch | null = null;
+        let rule: CategoryRule | null = null;
+        let recategorized: Transaction[] = [];
         commit((prev) => {
           const withTx = {
             ...prev,
@@ -442,10 +530,15 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
               item.id === row.id ? row : item,
             ),
           };
-          if (benefitId === undefined) return withTx;
-          const next = linkTransactionBenefit(withTx, row.id, benefitId);
+          const withRule = options?.applyRule
+            ? withAppliedRule(withTx, row)
+            : { state: withTx, rule: null, recategorized: [] as Transaction[] };
+          rule = withRule.rule;
+          recategorized = withRule.recategorized;
+          if (benefitId === undefined) return withRule.state;
+          const next = linkTransactionBenefit(withRule.state, row.id, benefitId);
           patch = next;
-          return { ...withTx, benefitRedemptions: next.redemptions };
+          return { ...withRule.state, benefitRedemptions: next.redemptions };
         });
         void writeCloud(async (supabase, userId) => {
           const updated = await supabase
@@ -453,9 +546,25 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
             .update(transactionToRow(row, userId))
             .eq("id", row.id);
           if (updated.error) return updated;
+          const ruleError = await persistAppliedRule(
+            supabase,
+            userId,
+            rule,
+            recategorized,
+          );
+          if (ruleError.error) return ruleError;
           if (!patch) return { error: null };
           return applyRedemptionPatch(supabase, userId, patch);
         });
+      },
+      deleteCategoryRule: (id) => {
+        commit((prev) => ({
+          ...prev,
+          categoryRules: prev.categoryRules.filter((rule) => rule.id !== id),
+        }));
+        void writeCloud((supabase) =>
+          supabase.from("category_rules").delete().eq("id", id),
+        );
       },
       deleteTransaction: (id) => {
         commit((prev) => ({
