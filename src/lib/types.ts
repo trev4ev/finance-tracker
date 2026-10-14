@@ -65,6 +65,8 @@ export interface Transaction {
   source: DataSource;
   plaidTransactionId: string | null;
   pending: boolean;
+  /** Explicitly marked by the user. Viewing a page never sets this. */
+  reviewed: boolean;
   merchantName: string | null;
   plaidCategory: string | null;
 }

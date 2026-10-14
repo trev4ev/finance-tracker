@@ -439,6 +439,11 @@ export function hasAdjustedAmount(tx: Transaction): boolean {
   return !sameMoney(tx.amount, cashAmount(tx));
 }
 
+/** Posted and not yet explicitly reviewed. Page views do not change this. */
+export function needsReview(tx: Transaction): boolean {
+  return !tx.pending && !tx.reviewed;
+}
+
 export function lookup<T extends { id: string }>(
   items: T[],
   id: string | null | undefined,

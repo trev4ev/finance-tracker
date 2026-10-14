@@ -57,6 +57,8 @@ type ExistingTransaction = {
   original_amount: number;
   notes: string;
   to_account_id: string | null;
+  pending: boolean;
+  reviewed: boolean;
 };
 
 type TransactionWrite = {
@@ -74,6 +76,7 @@ type TransactionWrite = {
   source: "plaid";
   plaid_transaction_id: string;
   pending: boolean;
+  reviewed: boolean;
   merchant_name: string | null;
   plaid_category: string | null;
 };
@@ -422,7 +425,7 @@ async function fetchExistingTransactions(
   for (const ids of chunk(plaidIds, WRITE_CHUNK)) {
     const { data, error } = await supabase
       .from("transactions")
-      .select("id, category_id, type, amount, original_amount, notes, to_account_id, plaid_transaction_id")
+      .select("id, category_id, type, amount, original_amount, notes, to_account_id, plaid_transaction_id, pending, reviewed")
       .eq("user_id", userId)
       .in("plaid_transaction_id", ids);
     if (error) throw error;
@@ -437,6 +440,8 @@ async function fetchExistingTransactions(
         original_amount: Number(row.original_amount ?? row.amount),
         notes: String(row.notes ?? ""),
         to_account_id: (row.to_account_id as string | null) ?? null,
+        pending: Boolean(row.pending),
+        reviewed: row.reviewed === undefined ? true : Boolean(row.reviewed),
       });
     }
   }
@@ -534,6 +539,7 @@ async function applyPlaidTransactions(
     const bankAmount = mapPlaidAmount(tx.amount);
     const keepShare =
       current != null && !sameMoney(current.amount, current.original_amount);
+    const posted = Boolean(current?.pending) && !tx.pending;
 
     const row: TransactionWrite = {
       user_id: userId,
@@ -549,6 +555,7 @@ async function applyPlaidTransactions(
       source: "plaid",
       plaid_transaction_id: tx.transaction_id,
       pending: Boolean(tx.pending),
+      reviewed: posted ? false : (current?.reviewed ?? false),
       merchant_name: tx.merchant_name ?? null,
       plaid_category: tx.personal_finance_category?.primary ?? null,
     };

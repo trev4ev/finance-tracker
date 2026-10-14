@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight } from "lucide-react";
+import { Check, ChevronRight } from "lucide-react";
 import { formatMoney } from "@/lib/money";
 import type { Account, Category, Transaction } from "@/lib/types";
 
@@ -11,6 +11,7 @@ export function TransactionRow({
   toAccount,
   benefitName,
   onClick,
+  onLooksGood,
 }: {
   tx: Transaction;
   category?: Category;
@@ -18,6 +19,7 @@ export function TransactionRow({
   toAccount?: Account;
   benefitName?: string;
   onClick: () => void;
+  onLooksGood?: () => void;
 }) {
   const subtitle =
     tx.type === "transfer"
@@ -64,7 +66,29 @@ export function TransactionRow({
         {tx.type === "income" ? "+" : tx.type === "expense" ? "-" : ""}
         {formatMoney(tx.amount)}
       </span>
-      <ChevronRight size={16} className="shrink-0 text-muted" aria-hidden />
+      {onLooksGood ? (
+        <span
+          role="button"
+          tabIndex={0}
+          aria-label={`Looks good: ${tx.description}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            onLooksGood();
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              event.stopPropagation();
+              onLooksGood();
+            }
+          }}
+          className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-accent active:bg-accent/15"
+        >
+          <Check size={18} />
+        </span>
+      ) : (
+        <ChevronRight size={16} className="shrink-0 text-muted" aria-hidden />
+      )}
     </button>
   );
 }

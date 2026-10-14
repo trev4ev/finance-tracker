@@ -11,6 +11,7 @@ export function TransactionModal({
   onAdd,
   onUpdate,
   onDelete,
+  onLooksGood,
 }: {
   editing: Transaction | "new";
   state: FinanceState;
@@ -26,8 +27,10 @@ export function TransactionModal({
     options?: { applyRule?: boolean },
   ) => void;
   onDelete: (id: string) => void;
+  onLooksGood?: (id: string) => void;
 }) {
   const pending = editing !== "new" && editing.pending;
+  const unreviewed = editing !== "new" && !editing.pending && !editing.reviewed;
 
   return (
     <Modal
@@ -52,6 +55,18 @@ export function TransactionModal({
           onClose();
         }}
       />
+      {unreviewed && onLooksGood ? (
+        <button
+          type="button"
+          className="mt-3 min-h-11 w-full rounded-xl bg-accent/15 px-4 py-2 text-sm font-medium text-accent active:bg-accent/25"
+          onClick={() => {
+            onLooksGood(editing.id);
+            onClose();
+          }}
+        >
+          Looks good
+        </button>
+      ) : null}
       {editing !== "new" && !pending ? (
         <button
           type="button"

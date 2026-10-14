@@ -8,6 +8,7 @@ export function transactionsHref(filters: {
   month?: string;
   from?: string;
   to?: string;
+  review?: boolean;
 }): string {
   const params = new URLSearchParams();
   if (filters.type && filters.type !== "all") params.set("type", filters.type);
@@ -24,6 +25,7 @@ export function transactionsHref(filters: {
   }
   if (filters.from) params.set("from", filters.from);
   if (filters.to) params.set("to", filters.to);
+  if (filters.review) params.set("review", "1");
   const query = params.toString();
   return query ? `/transactions?${query}` : "/transactions";
 }

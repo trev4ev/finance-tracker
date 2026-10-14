@@ -9,6 +9,7 @@ import {
   Settings,
   Wallet,
 } from "lucide-react";
+import { needsReview } from "@/lib/finance";
 import { useFinance } from "@/lib/store";
 
 const links = [
@@ -31,7 +32,8 @@ const links = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, cloudEnabled, error } = useFinance();
+  const { user, cloudEnabled, error, state } = useFinance();
+  const reviewCount = state.transactions.filter(needsReview).length;
 
   const path = pathname.replace(/\/$/, "") || "/";
   if (path === "/login" || path === "/auth/callback") {
@@ -69,7 +71,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 }`}
               >
                 <Icon size={18} />
-                {link.label}
+                <span className="flex-1">{link.label}</span>
+                {link.href === "/transactions" && reviewCount > 0 ? (
+                  <span className="rounded-full bg-accent/15 px-2 py-0.5 font-mono text-xs text-accent">
+                    {reviewCount}
+                  </span>
+                ) : null}
               </Link>
             );
           })}
@@ -127,11 +134,16 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   />
                 ) : null}
                 <span
-                  className={`flex h-8 w-8 items-center justify-center rounded-full ${
+                  className={`relative flex h-8 w-8 items-center justify-center rounded-full ${
                     active ? "bg-accent/15" : ""
                   }`}
                 >
                   <Icon size={20} />
+                  {link.href === "/transactions" && reviewCount > 0 ? (
+                    <span className="absolute -top-0.5 -right-0.5 min-w-4 rounded-full bg-accent px-1 text-[9px] font-semibold text-background">
+                      {reviewCount > 99 ? "99+" : reviewCount}
+                    </span>
+                  ) : null}
                 </span>
                 {link.shortLabel}
               </Link>

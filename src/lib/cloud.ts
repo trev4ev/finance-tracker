@@ -203,6 +203,7 @@ export function transactionToRow(tx: Transaction, userId: string) {
     source: tx.source,
     plaid_transaction_id: tx.plaidTransactionId,
     pending: tx.pending,
+    reviewed: tx.reviewed,
     merchant_name: tx.merchantName,
     plaid_category: tx.plaidCategory,
   };
@@ -314,6 +315,7 @@ function transactionFromRow(row: Record<string, unknown>): Transaction {
     source: (row.source as Transaction["source"]) ?? "manual",
     plaidTransactionId: (row.plaid_transaction_id as string | null) ?? null,
     pending: Boolean(row.pending),
+    reviewed: row.reviewed === undefined ? true : Boolean(row.reviewed),
     merchantName: (row.merchant_name as string | null) ?? null,
     plaidCategory: (row.plaid_category as string | null) ?? null,
   };

@@ -399,10 +399,21 @@ export function createDemoState(): FinanceState {
       ]
     : [];
 
+  const recentUnreviewed = [...transactions]
+    .filter((item) => item.type === "expense")
+    .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
+    .slice(0, 8)
+    .map((item) => item.id);
+  const unreviewed = new Set(recentUnreviewed);
+  const withReview = transactions.map((item) => ({
+    ...item,
+    reviewed: !unreviewed.has(item.id),
+  }));
+
   return normalizeState({
     accounts,
     categories,
-    transactions,
+    transactions: withReview,
     cardBenefits,
     benefitRedemptions,
     accountBalances: months.map((month, index) => ({
