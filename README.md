@@ -16,6 +16,7 @@ Supabase Edge Functions.
 - Accounts (checking, savings, credit, cash, investment, loan) with live balances
 - Credit card benefits (monthly, semiannual, and annual credits) with optional transaction links
 - Suggested benefit matches from merchant names (confirm to link; viewing never auto-links)
+- Optional unused-credit SMS a week before month-end (TextBelt; free key is 1 text/day)
 - CSV import/export
 - Optional **Supabase** persistence for transactions, accounts, and balance snapshots
 - Optional **Plaid Link** to connect banks and sync transactions/balances
@@ -47,9 +48,27 @@ static site to `out/`.
 supabase functions deploy password-account --no-verify-jwt
 supabase functions deploy send-auth-code --no-verify-jwt
 supabase functions deploy plaid --no-verify-jwt
+supabase functions deploy credit-reminders --no-verify-jwt
 ```
 
-5. Enable Email auth. Sign in from `/login` with email and password.
+### Unused-credit texts
+
+A week before month-end (the day 7 days before the last calendar day), an Edge Function texts unused credits whose period ends that month. Monthly DoorDash/Uber/Lyft credits are included every month; 6-month and yearly credits only when that period is ending.
+
+1. Apply `supabase/migrations/20261014020000_user_settings.sql`.
+2. Deploy `credit-reminders` (JWT verification off; the function checks a user session or `CREDIT_REMINDER_SECRET`).
+3. Optional secrets:
+
+```bash
+supabase secrets set CREDIT_REMINDER_SECRET=$(openssl rand -hex 32)
+# Paid TextBelt key if you need more than one SMS per day; omit to use the free `textbelt` key.
+# supabase secrets set TEXTBELT_KEY=...
+```
+
+4. Sign in, open **Settings**, save a mobile number.
+5. For the monthly send without opening the app, add a GitHub Actions secret `CREDIT_REMINDER_SECRET` (same value as the Supabase secret). The workflow `credit-reminders.yml` POSTs the function daily; opening Ledger while signed in is a backup trigger. The function sends at most once per user per month.
+
+6. Enable Email auth. Sign in from `/login` with email and password.
 
 Signed-in users store accounts, categories, transactions, card benefits, and Plaid items in Postgres with RLS. Plaid access tokens are encrypted at rest. The first time you sign in, non-sample local data is uploaded if the cloud ledger is empty.
 

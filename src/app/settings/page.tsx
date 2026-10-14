@@ -1,9 +1,11 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { NativeSelect } from "@/components/form-controls";
 import { parseTransactionsCsv, transactionsToCsv } from "@/lib/csv";
+import { invokeFunction } from "@/lib/functions";
+import { normalizePhone } from "@/lib/reminders";
 import { createClient } from "@/lib/supabase/client";
 import { useFinance } from "@/lib/store";
 
@@ -24,6 +26,28 @@ export default function SettingsPage() {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<"income" | "expense">("expense");
   const [notice, setNotice] = useState("");
+  const [phone, setPhone] = useState("");
+  const [creditReminders, setCreditReminders] = useState(true);
+  const [reminderNotice, setReminderNotice] = useState("");
+  const [reminderBusy, setReminderBusy] = useState(false);
+
+  useEffect(() => {
+    if (!user || !cloudEnabled) return;
+    let cancelled = false;
+    void createClient()
+      .from("user_settings")
+      .select("phone, credit_reminders")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        setPhone(typeof data.phone === "string" ? data.phone : "");
+        setCreditReminders(data.credit_reminders !== false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cloudEnabled, user]);
 
   if (!hydrated) {
     return <div className="h-40 animate-pulse rounded-2xl bg-surface" />;
@@ -80,6 +104,156 @@ export default function SettingsPage() {
           <p className="text-sm text-muted">
             Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
             to enable cloud sync.
+          </p>
+        )}
+      </section>
+
+      <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
+        <h3 className="mb-2 font-medium">Credit reminders</h3>
+        <p className="mb-4 text-sm text-muted">
+          A week before month-end, text unused credits that expire that month.
+          Uses TextBelt&apos;s free one-SMS-per-day quota (or a paid{" "}
+          <span className="font-mono">TEXTBELT_KEY</span> on the Edge Function).
+        </p>
+        {cloudEnabled && user ? (
+          <form
+            className="space-y-3"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              const normalized = phone.trim() ? normalizePhone(phone) : null;
+              if (phone.trim() && !normalized) {
+                setReminderNotice("Enter a valid phone number.");
+                return;
+              }
+              setReminderBusy(true);
+              setReminderNotice("");
+              const { error } = await createClient()
+                .from("user_settings")
+                .upsert(
+                  {
+                    user_id: user.id,
+                    phone: normalized,
+                    credit_reminders: creditReminders,
+                  },
+                  { onConflict: "user_id" },
+                );
+              setReminderBusy(false);
+              if (error) {
+                setReminderNotice(error.message);
+                return;
+              }
+              setPhone(normalized ?? "");
+              setReminderNotice(
+                normalized && creditReminders
+                  ? "Saved. You’ll get a text about a week before month-end."
+                  : "Saved. Reminders are off.",
+              );
+            }}
+          >
+            <label className="block text-sm">
+              <span className="mb-1 block text-muted">Mobile number</span>
+              <input
+                value={phone}
+                onChange={(event) => setPhone(event.target.value)}
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="5551234567"
+                className="h-12 w-full rounded-xl border border-border bg-surface-2 px-3 text-base outline-none focus:border-accent sm:h-11 sm:text-sm"
+              />
+            </label>
+            <label className="flex min-h-11 items-center gap-3 text-sm">
+              <input
+                type="checkbox"
+                checked={creditReminders}
+                onChange={(event) => setCreditReminders(event.target.checked)}
+                className="h-4 w-4 accent-accent"
+              />
+              Text me unused credits
+            </label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                type="submit"
+                disabled={reminderBusy}
+                className="min-h-11 rounded-xl bg-accent px-4 text-sm font-medium text-background disabled:opacity-60"
+              >
+                Save number
+              </button>
+              <button
+                type="button"
+                disabled={reminderBusy}
+                onClick={async () => {
+                  const normalized = phone.trim() ? normalizePhone(phone) : null;
+                  if (!normalized) {
+                    setReminderNotice("Save a valid phone number first.");
+                    return;
+                  }
+                  setReminderBusy(true);
+                  setReminderNotice("");
+                  try {
+                    await createClient()
+                      .from("user_settings")
+                      .upsert(
+                        {
+                          user_id: user.id,
+                          phone: normalized,
+                          credit_reminders: true,
+                        },
+                        { onConflict: "user_id" },
+                      );
+                    const result = await invokeFunction<{
+                      sent?: boolean;
+                      skipped?: string;
+                      credits?: number;
+                      error?: string;
+                    }>("credit-reminders", { force: true });
+                    if (result.sent) {
+                      setReminderNotice(
+                        result.credits
+                          ? `Sent a test with ${result.credits} unused credit${result.credits === 1 ? "" : "s"}. This uses the daily free SMS.`
+                          : "Sent a test text. This uses the daily free SMS.",
+                      );
+                    } else {
+                      setReminderNotice(
+                        result.error ||
+                          result.skipped ||
+                          "Nothing to send (no unused credits expiring this month).",
+                      );
+                    }
+                  } catch (err) {
+                    setReminderNotice(
+                      err instanceof Error
+                        ? err.message
+                        : "Could not send a test text.",
+                    );
+                  } finally {
+                    setReminderBusy(false);
+                  }
+                }}
+                className="min-h-11 rounded-xl border border-border px-4 text-sm active:bg-surface-2 disabled:opacity-60"
+              >
+                Send test text
+              </button>
+            </div>
+            {reminderNotice ? (
+              <p className="text-sm text-accent">{reminderNotice}</p>
+            ) : null}
+          </form>
+        ) : (
+          <p className="text-sm text-muted">
+            {cloudEnabled ? (
+              <>
+                <Link href="/login" className="text-accent">
+                  Sign in
+                </Link>{" "}
+                to store a number and receive texts. Reminders run on the
+                server, not in this browser.
+              </>
+            ) : (
+              <>
+                Set Supabase keys and sign in so a monthly server check can text
+                you. Local-only mode cannot send SMS.
+              </>
+            )}
           </p>
         )}
       </section>
