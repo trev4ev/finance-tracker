@@ -16,6 +16,7 @@ import {
   needsReview,
   transactionDetailLabel,
 } from "@/lib/finance";
+import { suggestedBenefitName } from "@/lib/benefit-match";
 import { transactionBenefitName } from "@/lib/benefits";
 import { formatMoney } from "@/lib/money";
 import { useFinance } from "@/lib/store";
@@ -354,6 +355,7 @@ function TransactionsList() {
                         account={lookup(state.accounts, tx.accountId)}
                         toAccount={lookup(state.accounts, tx.toAccountId)}
                         benefitName={transactionBenefitName(state, tx.id)}
+                        suggestedBenefitName={suggestedBenefitName(state, tx)}
                         onClick={() => setEditing(tx)}
                         onLooksGood={
                           reviewOnly ? () => markReviewed(tx.id) : undefined
@@ -374,6 +376,7 @@ function TransactionsList() {
                       account={lookup(state.accounts, tx.accountId)}
                       toAccount={lookup(state.accounts, tx.toAccountId)}
                       benefitName={transactionBenefitName(state, tx.id)}
+                      suggestedBenefitName={suggestedBenefitName(state, tx)}
                       onClick={() => setEditing(tx)}
                       onLooksGood={
                         reviewOnly ? () => markReviewed(tx.id) : undefined
@@ -423,6 +426,10 @@ function TransactionsList() {
           <tbody>
             {pageRows.map((tx) => {
               const account = lookup(state.accounts, tx.accountId);
+              const linkedBenefit = transactionBenefitName(state, tx.id);
+              const suggested = linkedBenefit
+                ? undefined
+                : suggestedBenefitName(state, tx);
               return (
                 <tr
                   key={tx.id}
@@ -442,8 +449,10 @@ function TransactionsList() {
                       ) : null}
                     </p>
                     <p className="text-xs text-muted">
-                      {transactionBenefitName(state, tx.id) ??
-                        transactionDetailLabel(tx, state)}
+                      {linkedBenefit ??
+                        (suggested
+                          ? `Suggested: ${suggested}`
+                          : transactionDetailLabel(tx, state))}
                     </p>
                   </td>
                   <td className="px-4 py-3 text-muted">{account?.name}</td>

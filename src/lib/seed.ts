@@ -350,11 +350,47 @@ export function createDemoState(): FinanceState {
   }
 
   const month = currentMonth();
+  transactions.push(
+    {
+      id: id(),
+      date: `${month}-14`,
+      description: "DoorDash",
+      amount: 32.4,
+      type: "expense",
+      accountId: "acc-credit",
+      categoryId: "cat-dining",
+      toAccountId: null,
+      notes: "",
+      merchantName: "DoorDash",
+    },
+    {
+      id: id(),
+      date: `${month}-16`,
+      description: "Uber",
+      amount: 18.5,
+      type: "expense",
+      accountId: "acc-credit",
+      categoryId: "cat-transport",
+      toAccountId: null,
+      notes: "",
+      merchantName: "Uber",
+    },
+  );
   const cardBenefits = [
     {
       id: "ben-dining",
       accountId: "acc-credit",
       name: "Dining credit",
+      frequency: "monthly" as const,
+      expectedAmount: 10,
+      cycleStartMonth: 1,
+      notes: "",
+      active: true,
+    },
+    {
+      id: "ben-doordash",
+      accountId: "acc-credit",
+      name: "DoorDash grocery",
       frequency: "monthly" as const,
       expectedAmount: 10,
       cycleStartMonth: 1,
