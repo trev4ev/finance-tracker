@@ -44,6 +44,10 @@ export default function AccountsPage() {
   const selectedId = state.accounts.some((account) => account.id === selectedAccountId)
     ? selectedAccountId
     : "all";
+  const activePlaidItems = useMemo(
+    () => state.plaidItems.filter((item) => item.status !== "revoked"),
+    [state.plaidItems],
+  );
 
   const historyPoints = useMemo(() => {
     const to = historyRangeEnd(state.transactions);
@@ -99,6 +103,40 @@ export default function AccountsPage() {
             </Link>
           ) : null}
         </div>
+        {cloudEnabled && user && activePlaidItems.length > 0 ? (
+          <section className="rounded-2xl border border-border bg-surface p-3 sm:p-4">
+            <div className="mb-2">
+              <h3 className="text-sm font-medium">Linked banks</h3>
+              <p className="text-xs text-muted">
+                To add a new card or account at a bank you already linked, use
+                Add accounts — don&apos;t link the bank again.
+              </p>
+            </div>
+            <ul className="space-y-2">
+              {activePlaidItems.map((item) => (
+                <li
+                  key={item.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface-2/60 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {item.institutionName || "Linked bank"}
+                    </p>
+                    <p className="text-xs text-muted">
+                      {item.status === "error" ? "Needs attention" : "Connected"}
+                    </p>
+                  </div>
+                  <PlaidLinkButton
+                    plaidItemId={item.id}
+                    label="Add accounts"
+                    disabled={syncing}
+                    onLinked={() => refresh()}
+                  />
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
       </header>
 
       {state.accounts.length > 0 ? (

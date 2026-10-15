@@ -45,7 +45,30 @@ type ItemRow = {
   id: string;
   access_token_encrypted: string;
   transactions_cursor: string | null;
+  institution_name?: string | null;
 };
+
+type AccountRow = {
+  id: string;
+  plaid_account_id: string | null;
+  plaid_item_id: string | null;
+  mask: string | null;
+  type: string;
+  institution_name: string | null;
+  official_name: string | null;
+  created_at: string;
+};
+
+function accountFingerprint(
+  type: string,
+  mask: string | null | undefined,
+  officialName: string | null | undefined,
+): string | null {
+  if (mask) return `${type}|mask:${mask}`;
+  const name = officialName?.trim().toLowerCase();
+  if (name) return `${type}|name:${name}`;
+  return null;
+}
 
 type ExistingTransaction = {
   id: string;
@@ -103,6 +126,7 @@ export async function syncPlaidItem(
   supabase: SupabaseClient,
   userId: string,
   itemRow: ItemRow,
+  options?: { selectedAccountIds?: string[] },
 ): Promise<{ added: number; modified: number; removed: number }> {
   const accessToken = await decryptSecret(itemRow.access_token_encrypted);
   const asOf = new Date().toISOString();
@@ -111,6 +135,14 @@ export async function syncPlaidItem(
     "/accounts/get",
     { access_token: accessToken },
   );
+
+  const selected = options?.selectedAccountIds?.filter(Boolean);
+  const plaidAccounts =
+    selected && selected.length > 0
+      ? accountsResponse.accounts.filter((account) =>
+          selected.includes(account.account_id),
+        )
+      : accountsResponse.accounts;
 
   const { data: categories, error: categoriesError } = await supabase
     .from("categories")
@@ -123,8 +155,9 @@ export async function syncPlaidItem(
     supabase,
     userId,
     itemRow.id,
-    accountsResponse.accounts,
+    plaidAccounts,
     asOf,
+    itemRow.institution_name ?? null,
   );
 
   let cursor = itemRow.transactions_cursor ?? undefined;
@@ -202,7 +235,9 @@ export async function syncAllPlaidItems(
 ) {
   const { data: items, error } = await supabase
     .from("plaid_items")
-    .select("id, access_token_encrypted, transactions_cursor")
+    .select(
+      "id, access_token_encrypted, transactions_cursor, institution_name",
+    )
     .eq("user_id", userId)
     .neq("status", "revoked");
   if (error) throw error;
@@ -212,7 +247,7 @@ export async function syncAllPlaidItems(
   let removed = 0;
   for (const item of items ?? []) {
     try {
-      const result = await syncPlaidItem(supabase, userId, item);
+      const result = await syncPlaidItem(supabase, userId, item as ItemRow);
       added += result.added;
       modified += result.modified;
       removed += result.removed;
@@ -279,22 +314,51 @@ async function upsertPlaidAccounts(
   plaidItemId: string,
   plaidAccounts: PlaidAccount[],
   asOf: string,
+  institutionName: string | null,
 ): Promise<Map<string, string>> {
+  // Load all linked accounts for the user so reconnecting the same bank can
+  // rematch by mask/type instead of inserting duplicates under a new Item.
   const { data: existingRows, error: existingError } = await supabase
     .from("accounts")
-    .select("id, plaid_account_id")
+    .select(
+      "id, plaid_account_id, plaid_item_id, mask, type, institution_name, official_name, created_at",
+    )
     .eq("user_id", userId)
-    .eq("plaid_item_id", plaidItemId);
+    .eq("source", "plaid")
+    .order("created_at", { ascending: true });
   if (existingError) throw existingError;
 
-  const existingByPlaidId = new Map(
-    (existingRows ?? [])
-      .filter((row) => row.plaid_account_id)
-      .map((row) => [row.plaid_account_id as string, row.id as string]),
-  );
+  const rows = (existingRows ?? []) as AccountRow[];
+  const existingByPlaidId = new Map<string, string>();
+  const fingerprintByInstitution = new Map<string, string>();
+  const fingerprintAny = new Map<string, string>();
+  const claimedIds = new Set<string>();
+
+  for (const row of rows) {
+    if (row.plaid_account_id) {
+      existingByPlaidId.set(row.plaid_account_id, row.id);
+    }
+    const fingerprint = accountFingerprint(
+      row.type,
+      row.mask,
+      row.official_name,
+    );
+    if (!fingerprint) continue;
+    if (!fingerprintAny.has(fingerprint)) {
+      fingerprintAny.set(fingerprint, row.id);
+    }
+    if (
+      institutionName &&
+      row.institution_name === institutionName &&
+      !fingerprintByInstitution.has(fingerprint)
+    ) {
+      fingerprintByInstitution.set(fingerprint, row.id);
+    }
+  }
 
   const toInsert: Record<string, unknown>[] = [];
   const toUpdate: Record<string, unknown>[] = [];
+  const duplicateMerges: { keepId: string; dropId: string }[] = [];
   const snapshots: Record<string, unknown>[] = [];
   const pendingSnapshots = new Map<
     string,
@@ -308,6 +372,8 @@ async function upsertPlaidAccounts(
     const currency = plaidAccount.balances.iso_currency_code || "USD";
     const plaidName =
       plaidAccount.name || plaidAccount.official_name || "Linked account";
+    const officialName =
+      plaidAccount.official_name ?? plaidAccount.name ?? null;
     // `name` is the user-facing label (editable in the app). Do not overwrite it
     // on later syncs; Plaid's names stay on `official_name`.
     const fields = {
@@ -319,12 +385,56 @@ async function upsertPlaidAccounts(
       plaid_item_id: plaidItemId,
       plaid_account_id: plaidAccount.account_id,
       mask: plaidAccount.mask ?? null,
-      official_name: plaidAccount.official_name ?? plaidAccount.name ?? null,
+      official_name: officialName,
+      institution_name: institutionName,
       last_synced_at: asOf,
     };
-    const existingId = existingByPlaidId.get(plaidAccount.account_id);
+
+    const byPlaidId = existingByPlaidId.get(plaidAccount.account_id);
+    const fingerprint = accountFingerprint(
+      type,
+      plaidAccount.mask,
+      officialName,
+    );
+    const byFingerprint = fingerprint
+      ? (fingerprintByInstitution.get(fingerprint) ??
+        fingerprintAny.get(fingerprint))
+      : undefined;
+
+    let existingId: string | undefined;
+    if (byPlaidId && byFingerprint && byPlaidId !== byFingerprint) {
+      // A prior reconnect created a duplicate. Keep the older fingerprint match
+      // and merge/remove the newer row after freeing its plaid_account_id.
+      existingId = byFingerprint;
+      if (!claimedIds.has(byPlaidId)) {
+        duplicateMerges.push({ keepId: byFingerprint, dropId: byPlaidId });
+      }
+    } else {
+      existingId = byPlaidId ?? byFingerprint;
+    }
+    if (existingId && claimedIds.has(existingId)) {
+      existingId = undefined;
+    }
+
     if (existingId) {
+      claimedIds.add(existingId);
+      existingByPlaidId.set(plaidAccount.account_id, existingId);
+      if (fingerprint) {
+        fingerprintAny.set(fingerprint, existingId);
+        if (institutionName) {
+          fingerprintByInstitution.set(fingerprint, existingId);
+        }
+      }
       toUpdate.push({ id: existingId, user_id: userId, ...fields });
+      snapshots.push({
+        user_id: userId,
+        account_id: existingId,
+        current,
+        available,
+        iso_currency_code: currency,
+        source: "plaid",
+        as_of: asOf,
+      });
     } else {
       toInsert.push({
         user_id: userId,
@@ -338,17 +448,62 @@ async function upsertPlaidAccounts(
         currency,
       });
     }
-    if (existingId) {
-      snapshots.push({
-        user_id: userId,
-        account_id: existingId,
-        current,
-        available,
-        iso_currency_code: currency,
-        source: "plaid",
-        as_of: asOf,
-      });
+  }
+
+  for (const merge of duplicateMerges) {
+    // Free the unique (user_id, plaid_account_id) slot before updating the keeper.
+    const { error: clearError } = await supabase
+      .from("accounts")
+      .update({
+        plaid_account_id: null,
+        plaid_item_id: null,
+      })
+      .eq("user_id", userId)
+      .eq("id", merge.dropId);
+    if (clearError) throw clearError;
+
+    const { data: keepTxs, error: keepTxError } = await supabase
+      .from("transactions")
+      .select("plaid_transaction_id")
+      .eq("user_id", userId)
+      .eq("account_id", merge.keepId)
+      .not("plaid_transaction_id", "is", null);
+    if (keepTxError) throw keepTxError;
+
+    const keepPlaidTxIds = (keepTxs ?? [])
+      .map((row) => row.plaid_transaction_id as string | null)
+      .filter((id): id is string => Boolean(id));
+
+    for (const ids of chunk(keepPlaidTxIds, WRITE_CHUNK)) {
+      const { error: dedupeError } = await supabase
+        .from("transactions")
+        .delete()
+        .eq("user_id", userId)
+        .eq("account_id", merge.dropId)
+        .in("plaid_transaction_id", ids);
+      if (dedupeError) throw dedupeError;
     }
+
+    const { error: moveTxError } = await supabase
+      .from("transactions")
+      .update({ account_id: merge.keepId })
+      .eq("user_id", userId)
+      .eq("account_id", merge.dropId);
+    if (moveTxError) throw moveTxError;
+
+    const { error: moveTransferError } = await supabase
+      .from("transactions")
+      .update({ to_account_id: merge.keepId })
+      .eq("user_id", userId)
+      .eq("to_account_id", merge.dropId);
+    if (moveTransferError) throw moveTransferError;
+
+    const { error: deleteError } = await supabase
+      .from("accounts")
+      .delete()
+      .eq("user_id", userId)
+      .eq("id", merge.dropId);
+    if (deleteError) throw deleteError;
   }
 
   if (toInsert.length > 0) {
@@ -361,6 +516,7 @@ async function upsertPlaidAccounts(
       const plaidAccountId = row.plaid_account_id as string;
       const accountId = row.id as string;
       existingByPlaidId.set(plaidAccountId, accountId);
+      claimedIds.add(accountId);
       const snapshot = pendingSnapshots.get(plaidAccountId);
       if (!snapshot) continue;
       snapshots.push({
