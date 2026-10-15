@@ -2,19 +2,19 @@ import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2";
 import { corsPreflight, json } from "../_shared/cors.ts";
 import {
-  formatCreditReminderSms,
+  formatCreditReminderEmail,
   isCreditReminderDay,
   lastDateOfMonth,
-  normalizePhone,
+  testReminderEmail,
   todayISO,
   unusedExpiringCredits,
   type ReminderBenefit,
+  type ReminderEmail,
   type ReminderRedemption,
 } from "../_shared/reminders.ts";
 
 type SettingsRow = {
   user_id: string;
-  phone: string | null;
   credit_reminders: boolean;
   last_credit_reminder_on: string | null;
 };
@@ -45,25 +45,42 @@ function isCronRequest(req: Request): boolean {
   return token === secret;
 }
 
-async function sendText(phone: string, message: string) {
-  const key = Deno.env.get("TEXTBELT_KEY") ?? "textbelt";
-  const response = await fetch("https://textbelt.com/text", {
+async function sendEmail(to: string, email: ReminderEmail) {
+  const apiKey = Deno.env.get("RESEND_API_KEY") ?? "";
+  if (!apiKey) {
+    return { ok: false as const, error: "RESEND_API_KEY is not set" };
+  }
+  const from =
+    Deno.env.get("RESEND_FROM") ?? "Ledger <onboarding@resend.dev>";
+  const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ phone, message, key }),
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      to: [to],
+      subject: email.subject,
+      text: email.text,
+      html: email.html,
+    }),
   });
   const payload = (await response.json().catch(() => ({}))) as {
-    success?: boolean;
-    error?: string;
-    quotaRemaining?: number;
+    id?: string;
+    message?: string;
+    error?: { message?: string };
   };
-  if (!response.ok || !payload.success) {
+  if (!response.ok) {
     return {
       ok: false as const,
-      error: payload.error || `TextBelt failed (${response.status})`,
+      error:
+        payload.error?.message ||
+        payload.message ||
+        `Resend failed (${response.status})`,
     };
   }
-  return { ok: true as const, quotaRemaining: payload.quotaRemaining };
+  return { ok: true as const };
 }
 
 function mapBenefit(row: Record<string, unknown>): ReminderBenefit {
@@ -82,14 +99,25 @@ function mapBenefit(row: Record<string, unknown>): ReminderBenefit {
   };
 }
 
+async function emailForUser(
+  admin: SupabaseClient,
+  userId: string,
+  fallback?: string | null,
+) {
+  if (fallback) return fallback;
+  const { data, error } = await admin.auth.admin.getUserById(userId);
+  if (error) return null;
+  return data.user?.email ?? null;
+}
+
 async function reminderForUser(
   supabase: SupabaseClient,
   userId: string,
-  options: { force: boolean; today: string },
+  options: { force: boolean; today: string; email?: string | null },
 ) {
   const settingsRes = await supabase
     .from("user_settings")
-    .select("user_id, phone, credit_reminders, last_credit_reminder_on")
+    .select("user_id, credit_reminders, last_credit_reminder_on")
     .eq("user_id", userId)
     .maybeSingle();
   if (settingsRes.error) {
@@ -99,8 +127,10 @@ async function reminderForUser(
   if (!settings?.credit_reminders) {
     return { userId, skipped: "reminders off" };
   }
-  const phone = settings.phone ? normalizePhone(settings.phone) : null;
-  if (!phone) return { userId, skipped: "no phone" };
+
+  const to =
+    options.email ?? (await emailForUser(serviceClient(), userId));
+  if (!to) return { userId, skipped: "no email" };
 
   const month = options.today.slice(0, 7);
   if (
@@ -137,23 +167,17 @@ async function reminderForUser(
   );
   const redemptions: ReminderRedemption[] = (redemptionsRes.data ?? []).map(
     (row) => ({
-      benefitId: String(
-        (row as { benefit_id: string }).benefit_id,
-      ),
-      periodStart: String(
-        (row as { period_start: string }).period_start,
-      ),
+      benefitId: String((row as { benefit_id: string }).benefit_id),
+      periodStart: String((row as { period_start: string }).period_start),
     }),
   );
   const unused = unusedExpiringCredits(benefits, redemptions, options.today);
-  const message =
-    formatCreditReminderSms(unused, lastDateOfMonth(month)) ??
-    (options.force
-      ? "Ledger test: no unused credits expire this month."
-      : null);
-  if (!message) return { userId, skipped: "none expiring" };
+  const email =
+    formatCreditReminderEmail(unused, lastDateOfMonth(month)) ??
+    (options.force ? testReminderEmail() : null);
+  if (!email) return { userId, skipped: "none expiring" };
 
-  const sent = await sendText(phone, message);
+  const sent = await sendEmail(to, email);
   if (!sent.ok) {
     return { userId, error: sent.error };
   }
@@ -190,8 +214,7 @@ Deno.serve(async (req) => {
     const listed = await admin
       .from("user_settings")
       .select("user_id")
-      .eq("credit_reminders", true)
-      .not("phone", "is", null);
+      .eq("credit_reminders", true);
     if (listed.error) {
       return json(req, { error: listed.error.message }, 500);
     }
@@ -213,7 +236,11 @@ Deno.serve(async (req) => {
     return json(req, { error: "Sign in required" }, 401);
   }
 
-  const result = await reminderForUser(supabase, user.id, { force, today });
+  const result = await reminderForUser(supabase, user.id, {
+    force,
+    today,
+    email: user.email,
+  });
   if ("error" in result && result.error) {
     return json(req, result, 502);
   }

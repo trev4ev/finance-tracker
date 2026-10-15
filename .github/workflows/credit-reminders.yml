@@ -1,4 +1,4 @@
-name: Unused-credit SMS reminders
+name: Unused-credit email reminders
 
 # Daily at 15:00 UTC (morning US). The function no-ops except the calendar
 # day one week before month-end.

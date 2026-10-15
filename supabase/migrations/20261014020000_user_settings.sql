@@ -1,7 +1,6 @@
--- Per-user notification settings. Phone is used for unused-credit SMS reminders.
+-- Per-user notification settings. Unused-credit reminders go to the Auth email.
 create table public.user_settings (
   user_id uuid primary key references auth.users (id) on delete cascade,
-  phone text,
   credit_reminders boolean not null default true,
   last_credit_reminder_on date,
   updated_at timestamptz not null default now()

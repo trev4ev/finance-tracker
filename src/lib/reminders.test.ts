@@ -1,10 +1,9 @@
 import assert from "node:assert/strict";
 import { normalizeCardBenefit } from "./normalize";
 import {
-  formatCreditReminderSms,
+  formatCreditReminderEmail,
   isCreditReminderDay,
   lastDateOfMonth,
-  normalizePhone,
   unusedExpiringBenefits,
 } from "./reminders";
 import type { BenefitRedemption, CardBenefit } from "./types";
@@ -22,13 +21,6 @@ import type { BenefitRedemption, CardBenefit } from "./types";
   assert.equal(isCreditReminderDay("2026-09-23"), true);
   assert.equal(isCreditReminderDay("2026-02-21"), true);
   assert.equal(isCreditReminderDay("2028-02-22"), true);
-}
-
-{
-  assert.equal(normalizePhone("(415) 555-0100"), "+14155550100");
-  assert.equal(normalizePhone("14155550100"), "+14155550100");
-  assert.equal(normalizePhone("+44 7700 900123"), "+447700900123");
-  assert.equal(normalizePhone("555"), null);
 }
 
 function benefit(
@@ -108,11 +100,18 @@ const stubhub = benefit({
 
 {
   const unused = unusedExpiringBenefits([monthly, lyft], [], "2026-10-24");
-  assert.equal(
-    formatCreditReminderSms(unused, "2026-10-31"),
-    "Ledger: unused credits expire Oct 31 — DoorDash grocery $10, Lyft $10.",
+  const email = formatCreditReminderEmail(
+    unused.map((row) => ({
+      name: row.benefit.name,
+      expectedAmount: row.benefit.expectedAmount,
+    })),
+    "2026-10-31",
   );
-  assert.equal(formatCreditReminderSms([], "2026-10-31"), null);
+  assert.equal(email?.subject, "Unused credits expire Oct 31");
+  assert.match(email?.text ?? "", /DoorDash grocery — \$10/);
+  assert.match(email?.text ?? "", /Lyft — \$10/);
+  assert.match(email?.html ?? "", /<li>DoorDash grocery — \$10<\/li>/);
+  assert.equal(formatCreditReminderEmail([], "2026-10-31"), null);
 }
 
 console.log("reminders.test.ts passed");

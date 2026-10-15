@@ -5,7 +5,6 @@ import Link from "next/link";
 import { NativeSelect } from "@/components/form-controls";
 import { parseTransactionsCsv, transactionsToCsv } from "@/lib/csv";
 import { invokeFunction } from "@/lib/functions";
-import { normalizePhone } from "@/lib/reminders";
 import { createClient } from "@/lib/supabase/client";
 import { useFinance } from "@/lib/store";
 
@@ -26,7 +25,6 @@ export default function SettingsPage() {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<"income" | "expense">("expense");
   const [notice, setNotice] = useState("");
-  const [phone, setPhone] = useState("");
   const [creditReminders, setCreditReminders] = useState(true);
   const [reminderNotice, setReminderNotice] = useState("");
   const [reminderBusy, setReminderBusy] = useState(false);
@@ -36,12 +34,11 @@ export default function SettingsPage() {
     let cancelled = false;
     void createClient()
       .from("user_settings")
-      .select("phone, credit_reminders")
+      .select("credit_reminders")
       .eq("user_id", user.id)
       .maybeSingle()
       .then(({ data }) => {
         if (cancelled || !data) return;
-        setPhone(typeof data.phone === "string" ? data.phone : "");
         setCreditReminders(data.credit_reminders !== false);
       });
     return () => {
@@ -111,20 +108,14 @@ export default function SettingsPage() {
       <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
         <h3 className="mb-2 font-medium">Credit reminders</h3>
         <p className="mb-4 text-sm text-muted">
-          A week before month-end, text unused credits that expire that month.
-          Uses TextBelt&apos;s free one-SMS-per-day quota (or a paid{" "}
-          <span className="font-mono">TEXTBELT_KEY</span> on the Edge Function).
+          A week before month-end, email unused credits that expire that month.
+          Mail goes to your signed-in address via Resend&apos;s free tier.
         </p>
         {cloudEnabled && user ? (
           <form
             className="space-y-3"
             onSubmit={async (event) => {
               event.preventDefault();
-              const normalized = phone.trim() ? normalizePhone(phone) : null;
-              if (phone.trim() && !normalized) {
-                setReminderNotice("Enter a valid phone number.");
-                return;
-              }
               setReminderBusy(true);
               setReminderNotice("");
               const { error } = await createClient()
@@ -132,7 +123,6 @@ export default function SettingsPage() {
                 .upsert(
                   {
                     user_id: user.id,
-                    phone: normalized,
                     credit_reminders: creditReminders,
                   },
                   { onConflict: "user_id" },
@@ -142,25 +132,16 @@ export default function SettingsPage() {
                 setReminderNotice(error.message);
                 return;
               }
-              setPhone(normalized ?? "");
               setReminderNotice(
-                normalized && creditReminders
-                  ? "Saved. You’ll get a text about a week before month-end."
+                creditReminders
+                  ? `Saved. You’ll get an email at ${user.email} about a week before month-end.`
                   : "Saved. Reminders are off.",
               );
             }}
           >
-            <label className="block text-sm">
-              <span className="mb-1 block text-muted">Mobile number</span>
-              <input
-                value={phone}
-                onChange={(event) => setPhone(event.target.value)}
-                inputMode="tel"
-                autoComplete="tel"
-                placeholder="5551234567"
-                className="h-12 w-full rounded-xl border border-border bg-surface-2 px-3 text-base outline-none focus:border-accent sm:h-11 sm:text-sm"
-              />
-            </label>
+            <p className="text-sm text-muted">
+              Send to <span className="text-foreground">{user.email}</span>
+            </p>
             <label className="flex min-h-11 items-center gap-3 text-sm">
               <input
                 type="checkbox"
@@ -168,7 +149,7 @@ export default function SettingsPage() {
                 onChange={(event) => setCreditReminders(event.target.checked)}
                 className="h-4 w-4 accent-accent"
               />
-              Text me unused credits
+              Email me unused credits
             </label>
             <div className="flex flex-col gap-2 sm:flex-row">
               <button
@@ -176,17 +157,12 @@ export default function SettingsPage() {
                 disabled={reminderBusy}
                 className="min-h-11 rounded-xl bg-accent px-4 text-sm font-medium text-background disabled:opacity-60"
               >
-                Save number
+                Save
               </button>
               <button
                 type="button"
                 disabled={reminderBusy}
                 onClick={async () => {
-                  const normalized = phone.trim() ? normalizePhone(phone) : null;
-                  if (!normalized) {
-                    setReminderNotice("Save a valid phone number first.");
-                    return;
-                  }
                   setReminderBusy(true);
                   setReminderNotice("");
                   try {
@@ -195,11 +171,11 @@ export default function SettingsPage() {
                       .upsert(
                         {
                           user_id: user.id,
-                          phone: normalized,
                           credit_reminders: true,
                         },
                         { onConflict: "user_id" },
                       );
+                    setCreditReminders(true);
                     const result = await invokeFunction<{
                       sent?: boolean;
                       skipped?: string;
@@ -209,8 +185,8 @@ export default function SettingsPage() {
                     if (result.sent) {
                       setReminderNotice(
                         result.credits
-                          ? `Sent a test with ${result.credits} unused credit${result.credits === 1 ? "" : "s"}. This uses the daily free SMS.`
-                          : "Sent a test text. This uses the daily free SMS.",
+                          ? `Sent a test to ${user.email} with ${result.credits} unused credit${result.credits === 1 ? "" : "s"}.`
+                          : `Sent a test to ${user.email}.`,
                       );
                     } else {
                       setReminderNotice(
@@ -223,7 +199,7 @@ export default function SettingsPage() {
                     setReminderNotice(
                       err instanceof Error
                         ? err.message
-                        : "Could not send a test text.",
+                        : "Could not send a test email.",
                     );
                   } finally {
                     setReminderBusy(false);
@@ -231,7 +207,7 @@ export default function SettingsPage() {
                 }}
                 className="min-h-11 rounded-xl border border-border px-4 text-sm active:bg-surface-2 disabled:opacity-60"
               >
-                Send test text
+                Send test email
               </button>
             </div>
             {reminderNotice ? (
@@ -245,13 +221,13 @@ export default function SettingsPage() {
                 <Link href="/login" className="text-accent">
                   Sign in
                 </Link>{" "}
-                to store a number and receive texts. Reminders run on the
-                server, not in this browser.
+                to email unused-credit reminders to your account. Reminders run
+                on the server, not in this browser.
               </>
             ) : (
               <>
-                Set Supabase keys and sign in so a monthly server check can text
-                you. Local-only mode cannot send SMS.
+                Set Supabase keys and sign in so a monthly server check can email
+                you. Local-only mode cannot send mail.
               </>
             )}
           </p>
