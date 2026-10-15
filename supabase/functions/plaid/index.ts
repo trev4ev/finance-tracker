@@ -1,7 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "npm:@supabase/supabase-js@2";
 import { corsPreflight, json } from "../_shared/cors.ts";
-import { encryptSecret } from "../_shared/crypto.ts";
+import { decryptSecret, encryptSecret } from "../_shared/crypto.ts";
 import { isPlaidConfigured, plaidRequest } from "../_shared/plaid-api.ts";
 import { syncAllPlaidItems, syncPlaidItem } from "../_shared/plaid-sync.ts";
 
@@ -13,6 +13,19 @@ function userClient(req: Request) {
     global: { headers: { Authorization: auth } },
     auth: { autoRefreshToken: false, persistSession: false },
   });
+}
+
+function asStringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((item) => {
+      if (typeof item === "string") return item;
+      if (item && typeof item === "object" && "id" in item) {
+        return String((item as { id: unknown }).id ?? "");
+      }
+      return "";
+    })
+    .filter(Boolean);
 }
 
 Deno.serve(async (req) => {
@@ -53,6 +66,43 @@ Deno.serve(async (req) => {
     }
 
     if (action === "link-token") {
+      const plaidItemId =
+        typeof body.plaid_item_id === "string" ? body.plaid_item_id : "";
+
+      if (plaidItemId) {
+        const { data: item, error } = await supabase
+          .from("plaid_items")
+          .select("id, access_token_encrypted")
+          .eq("id", plaidItemId)
+          .eq("user_id", user.id)
+          .neq("status", "revoked")
+          .maybeSingle();
+        if (error) throw error;
+        if (!item) {
+          return json(req, { error: "Linked bank not found" }, 404);
+        }
+
+        const accessToken = await decryptSecret(item.access_token_encrypted);
+        // Update mode + account select: add a new card/account to the same Item
+        // (required for Chase) without creating a duplicate Item.
+        const created = await plaidRequest<{ link_token: string }>(
+          "/link/token/create",
+          {
+            user: { client_user_id: user.id },
+            client_name: "Ledger",
+            language: "en",
+            country_codes: ["US"],
+            access_token: accessToken,
+            update: { account_selection_enabled: true },
+          },
+        );
+        return json(req, {
+          link_token: created.link_token,
+          mode: "update",
+          plaid_item_id: item.id,
+        });
+      }
+
       const created = await plaidRequest<{ link_token: string }>(
         "/link/token/create",
         {
@@ -64,10 +114,34 @@ Deno.serve(async (req) => {
           transactions: { days_requested: 90 },
         },
       );
-      return json(req, { link_token: created.link_token });
+      return json(req, { link_token: created.link_token, mode: "link" });
     }
 
     if (action === "sync") {
+      const plaidItemId =
+        typeof body.plaid_item_id === "string" ? body.plaid_item_id : "";
+      if (plaidItemId) {
+        const { data: item, error } = await supabase
+          .from("plaid_items")
+          .select(
+            "id, access_token_encrypted, transactions_cursor, institution_name",
+          )
+          .eq("id", plaidItemId)
+          .eq("user_id", user.id)
+          .neq("status", "revoked")
+          .maybeSingle();
+        if (error) throw error;
+        if (!item) {
+          return json(req, { error: "Linked bank not found" }, 404);
+        }
+        const selectedAccountIds = asStringArray(body.account_ids);
+        const result = await syncPlaidItem(supabase, user.id, item, {
+          selectedAccountIds:
+            selectedAccountIds.length > 0 ? selectedAccountIds : undefined,
+        });
+        return json(req, { ok: true, ...result, itemCount: 1 });
+      }
+
       const result = await syncAllPlaidItems(supabase, user.id);
       return json(req, result);
     }
@@ -81,6 +155,7 @@ Deno.serve(async (req) => {
         | { institution_id?: string; name?: string }
         | null
         | undefined;
+      const selectedAccountIds = asStringArray(body.account_ids);
       const exchanged = await plaidRequest<{
         access_token: string;
         item_id: string;
@@ -96,11 +171,50 @@ Deno.serve(async (req) => {
           institution_name: institution?.name ?? null,
           status: "active",
         })
-        .select("id, access_token_encrypted, transactions_cursor")
+        .select(
+          "id, access_token_encrypted, transactions_cursor, institution_name",
+        )
         .single();
       if (error) throw error;
 
-      const sync = await syncPlaidItem(supabase, user.id, item);
+      const sync = await syncPlaidItem(supabase, user.id, item, {
+        selectedAccountIds:
+          selectedAccountIds.length > 0 ? selectedAccountIds : undefined,
+      });
+
+      // Re-linking the same bank creates a new Plaid Item. Revoke prior Items for
+      // that institution so later syncs don't reintroduce rematched accounts.
+      const institutionId = institution?.institution_id ?? null;
+      if (institutionId) {
+        const { data: priorItems, error: priorError } = await supabase
+          .from("plaid_items")
+          .select("id, access_token_encrypted")
+          .eq("user_id", user.id)
+          .eq("institution_id", institutionId)
+          .neq("id", item.id)
+          .neq("status", "revoked");
+        if (priorError) throw priorError;
+
+        for (const prior of priorItems ?? []) {
+          try {
+            const priorToken = await decryptSecret(
+              prior.access_token_encrypted,
+            );
+            await plaidRequest("/item/remove", { access_token: priorToken });
+          } catch {
+            // Item may already be removed on Plaid's side; still mark revoked locally.
+          }
+          await supabase
+            .from("plaid_items")
+            .update({
+              status: "revoked",
+              error_message: "Replaced by a newer link for this institution",
+            })
+            .eq("id", prior.id)
+            .eq("user_id", user.id);
+        }
+      }
+
       return json(req, { ok: true, ...sync });
     }
 
