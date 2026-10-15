@@ -59,6 +59,7 @@ type FinanceContextValue = {
   error: string | null;
   refresh: () => Promise<void>;
   syncPlaid: () => Promise<void>;
+  removePlaidItem: (plaidItemId: string) => Promise<void>;
   addAccount: (
     account: Pick<Account, "name" | "type" | "startingBalance"> & Partial<Account>,
   ) => void;
@@ -316,6 +317,30 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     }
   }, [cloudEnabled, loadCloud]);
 
+  const removePlaidItem = useCallback(
+    async (plaidItemId: string) => {
+      const current = userRef.current;
+      if (!current || !cloudEnabled) return;
+      setSyncing(true);
+      setError(null);
+      try {
+        await invokeFunction("plaid", {
+          action: "remove",
+          plaid_item_id: plaidItemId,
+        });
+        await loadCloud(current.id);
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Could not remove linked bank",
+        );
+        throw err;
+      } finally {
+        setSyncing(false);
+      }
+    },
+    [cloudEnabled, loadCloud],
+  );
+
   useEffect(() => {
     if (!hydrated || !user || !cloudEnabled || plaidAutoSyncStarted) return;
     if (!plaidAccountsNeedSync(state)) return;
@@ -333,6 +358,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
       error,
       refresh,
       syncPlaid,
+      removePlaidItem,
       addAccount: (account) => {
         const row = normalizeAccount({ ...account, id: crypto.randomUUID() });
         commit((prev) => ({ ...prev, accounts: [...prev.accounts, row] }));
@@ -570,7 +596,20 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         }
       },
     }),
-    [commit, cloudEnabled, error, hydrated, refresh, state, syncPlaid, syncing, user, writeCloud, writeRedemptionPatch],
+    [
+      commit,
+      cloudEnabled,
+      error,
+      hydrated,
+      refresh,
+      removePlaidItem,
+      state,
+      syncPlaid,
+      syncing,
+      user,
+      writeCloud,
+      writeRedemptionPatch,
+    ],
   );
 
   return (

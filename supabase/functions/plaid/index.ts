@@ -218,6 +218,56 @@ Deno.serve(async (req) => {
       return json(req, { ok: true, ...sync });
     }
 
+    if (action === "remove") {
+      const plaidItemId =
+        typeof body.plaid_item_id === "string" ? body.plaid_item_id : "";
+      if (!plaidItemId) {
+        return json(req, { error: "plaid_item_id is required" }, 400);
+      }
+
+      const { data: item, error } = await supabase
+        .from("plaid_items")
+        .select("id, access_token_encrypted")
+        .eq("id", plaidItemId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (error) throw error;
+      if (!item) {
+        return json(req, { error: "Linked bank not found" }, 404);
+      }
+
+      // Removes the Item on Plaid so it no longer counts toward trial/item limits.
+      try {
+        const accessToken = await decryptSecret(item.access_token_encrypted);
+        await plaidRequest("/item/remove", { access_token: accessToken });
+      } catch {
+        // Item may already be gone on Plaid; still clean up locally.
+      }
+
+      // Keep ledger history: convert linked accounts to manual before delete
+      // (accounts.plaid_item_id cascades on plaid_items delete).
+      const { error: unlinkError } = await supabase
+        .from("accounts")
+        .update({
+          plaid_item_id: null,
+          plaid_account_id: null,
+          source: "manual",
+          last_synced_at: null,
+        })
+        .eq("user_id", user.id)
+        .eq("plaid_item_id", item.id);
+      if (unlinkError) throw unlinkError;
+
+      const { error: deleteError } = await supabase
+        .from("plaid_items")
+        .delete()
+        .eq("id", item.id)
+        .eq("user_id", user.id);
+      if (deleteError) throw deleteError;
+
+      return json(req, { ok: true });
+    }
+
     return json(req, { error: "Unknown action" }, 400);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Plaid error";

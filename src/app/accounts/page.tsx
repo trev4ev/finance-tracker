@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Pencil, Plus, RefreshCw } from "lucide-react";
+import { Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { BalanceHistoryChart } from "@/components/BalanceHistoryChart";
 import { NativeSelect } from "@/components/form-controls";
 import { Modal } from "@/components/Modal";
@@ -35,12 +35,14 @@ export default function AccountsPage() {
     syncing,
     refresh,
     syncPlaid,
+    removePlaidItem,
   } = useFinance();
   const [editing, setEditing] = useState<Account | "new" | null>(null);
   const [range, setRange] = useState<HistoryRange>("3m");
   const [selectedAccountId, setSelectedAccountId] = useState<string | "all">(
     "all",
   );
+  const [removingItemId, setRemovingItemId] = useState<string | null>(null);
   const selectedId = state.accounts.some((account) => account.id === selectedAccountId)
     ? selectedAccountId
     : "all";
@@ -94,7 +96,7 @@ export default function AccountsPage() {
           {cloudEnabled && user ? (
             <>
               <PlaidLinkButton onLinked={() => refresh()} />
-              {state.plaidItems.length > 0 ? (
+              {activePlaidItems.length > 0 ? (
                 <button
                   type="button"
                   disabled={syncing}
@@ -115,40 +117,6 @@ export default function AccountsPage() {
             </Link>
           ) : null}
         </div>
-        {cloudEnabled && user && activePlaidItems.length > 0 ? (
-          <section className="rounded-2xl border border-border bg-surface p-3 sm:p-4">
-            <div className="mb-2">
-              <h3 className="text-sm font-medium">Linked banks</h3>
-              <p className="text-xs text-muted">
-                To add a new card or account at a bank you already linked, use
-                Add accounts — don&apos;t link the bank again.
-              </p>
-            </div>
-            <ul className="space-y-2">
-              {activePlaidItems.map((item) => (
-                <li
-                  key={item.id}
-                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface-2/60 px-3 py-2"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">
-                      {item.institutionName || "Linked bank"}
-                    </p>
-                    <p className="text-xs text-muted">
-                      {item.status === "error" ? "Needs attention" : "Connected"}
-                    </p>
-                  </div>
-                  <PlaidLinkButton
-                    plaidItemId={item.id}
-                    label="Add accounts"
-                    disabled={syncing}
-                    onLinked={() => refresh()}
-                  />
-                </li>
-              ))}
-            </ul>
-          </section>
-        ) : null}
       </header>
 
       {state.accounts.length > 0 ? (
@@ -267,6 +235,69 @@ export default function AccountsPage() {
           </button>
         ) : null}
       </div>
+
+      {cloudEnabled && user && activePlaidItems.length > 0 ? (
+        <section className="rounded-2xl border border-border bg-surface p-3 sm:p-4">
+          <div className="mb-2">
+            <h3 className="text-sm font-medium">Linked banks</h3>
+            <p className="text-xs text-muted">
+              Use Add accounts for a new card at a bank you already linked.
+              Remove a bank to free a Plaid connection; accounts and history
+              stay in Ledger as manual.
+            </p>
+          </div>
+          <ul className="space-y-2">
+            {activePlaidItems.map((item) => {
+              const busy = removingItemId === item.id || syncing;
+              return (
+                <li
+                  key={item.id}
+                  className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-surface-2/60 px-3 py-2"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium">
+                      {item.institutionName || "Linked bank"}
+                    </p>
+                    <p className="text-xs text-muted">
+                      {item.status === "error" ? "Needs attention" : "Connected"}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <PlaidLinkButton
+                      plaidItemId={item.id}
+                      label="Add accounts"
+                      disabled={busy}
+                      onLinked={() => refresh()}
+                    />
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => {
+                        const name = item.institutionName || "this bank";
+                        if (
+                          !window.confirm(
+                            `Remove ${name} from Plaid? This frees a connection slot. Accounts and transactions stay in Ledger as manual.`,
+                          )
+                        ) {
+                          return;
+                        }
+                        setRemovingItemId(item.id);
+                        void removePlaidItem(item.id).finally(() => {
+                          setRemovingItemId(null);
+                        });
+                      }}
+                      className="inline-flex h-11 shrink-0 items-center gap-2 rounded-2xl border border-expense/30 px-4 text-sm text-expense active:bg-expense/10 disabled:opacity-50"
+                    >
+                      <Trash2 size={16} />
+                      {removingItemId === item.id ? "Removing…" : "Remove"}
+                    </button>
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      ) : null}
 
       {editing ? (
         <AccountModal
