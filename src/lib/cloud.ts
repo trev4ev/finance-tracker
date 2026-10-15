@@ -2,7 +2,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { normalizeState } from "./normalize";
 import type {
   Account,
-  Budget,
+  AccountBalance,
+  BenefitRedemption,
+  CardBenefit,
   Category,
   FinanceState,
   PlaidItem,
@@ -42,31 +44,52 @@ export async function loadFinanceState(
   let lastError: { code?: string; message?: string } | null = null;
   for (let attempt = 0; attempt < 4; attempt += 1) {
     if (attempt > 0) await sleep(800 * attempt);
-    const [accounts, categories, transactions, budgets, plaidItems] =
-      await Promise.all([
-        supabase.from("accounts").select("*").eq("user_id", userId),
-        supabase.from("categories").select("*").eq("user_id", userId),
-        supabase.from("transactions").select("*").eq("user_id", userId),
-        supabase.from("budgets").select("*").eq("user_id", userId),
-        supabase
-          .from("plaid_items")
-          .select("id, institution_name, status, last_synced_at")
-          .eq("user_id", userId),
-      ]);
+    const [
+      accounts,
+      categories,
+      transactions,
+      cardBenefits,
+      benefitRedemptions,
+      plaidItems,
+      accountBalances,
+    ] = await Promise.all([
+      supabase.from("accounts").select("*").eq("user_id", userId),
+      supabase.from("categories").select("*").eq("user_id", userId),
+      supabase.from("transactions").select("*").eq("user_id", userId),
+      supabase.from("card_benefits").select("*").eq("user_id", userId),
+      supabase.from("benefit_redemptions").select("*").eq("user_id", userId),
+      supabase
+        .from("plaid_items")
+        .select("id, institution_name, status, last_synced_at")
+        .eq("user_id", userId),
+      supabase
+        .from("account_balances")
+        .select("*")
+        .eq("user_id", userId)
+        .order("as_of", { ascending: true }),
+    ]);
 
     const error =
       accounts.error ||
       categories.error ||
       transactions.error ||
-      budgets.error ||
-      plaidItems.error;
+      cardBenefits.error ||
+      benefitRedemptions.error ||
+      plaidItems.error ||
+      accountBalances.error;
     if (!error) {
       return normalizeState({
         accounts: (accounts.data ?? []).map(accountFromRow),
         categories: (categories.data ?? []).map(categoryFromRow),
         transactions: (transactions.data ?? []).map(transactionFromRow),
-        budgets: (budgets.data ?? []).map(budgetFromRow),
+        cardBenefits: (cardBenefits.data ?? []).map(cardBenefitFromRow),
+        benefitRedemptions: (benefitRedemptions.data ?? []).map(
+          benefitRedemptionFromRow,
+        ),
         plaidItems: (plaidItems.data ?? []).map(plaidItemFromRow),
+        accountBalances: (accountBalances.data ?? []).map(
+          accountBalanceFromRow,
+        ),
       });
     }
     lastError = error;
@@ -84,6 +107,8 @@ export async function replaceFinanceState(
     const { error } = await supabase.from(table).delete().eq("user_id", userId);
     if (error) throw error;
   };
+  await del("benefit_redemptions");
+  await del("card_benefits");
   await del("transactions");
   await del("budgets");
   await del("account_balances");
@@ -103,16 +128,30 @@ export async function replaceFinanceState(
       .insert(state.accounts.map((account) => accountToRow(account, userId)));
     if (error) throw error;
   }
+  if (state.cardBenefits.length > 0) {
+    const { error } = await supabase.from("card_benefits").insert(
+      state.cardBenefits.map((benefit) => cardBenefitToRow(benefit, userId)),
+    );
+    if (error) throw error;
+  }
   if (state.transactions.length > 0) {
     const { error } = await supabase.from("transactions").insert(
       state.transactions.map((tx) => transactionToRow(tx, userId)),
     );
     if (error) throw error;
   }
-  if (state.budgets.length > 0) {
-    const { error } = await supabase
-      .from("budgets")
-      .insert(state.budgets.map((budget) => budgetToRow(budget, userId)));
+  if (state.benefitRedemptions.length > 0) {
+    const { error } = await supabase.from("benefit_redemptions").insert(
+      state.benefitRedemptions.map((row) =>
+        benefitRedemptionToRow(row, userId),
+      ),
+    );
+    if (error) throw error;
+  }
+  if (state.accountBalances.length > 0) {
+    const { error } = await supabase.from("account_balances").insert(
+      state.accountBalances.map((row) => accountBalanceToRow(row, userId)),
+    );
     if (error) throw error;
   }
 }
@@ -157,6 +196,19 @@ export function transactionToRow(tx: Transaction, userId: string) {
   };
 }
 
+export function accountBalanceToRow(row: AccountBalance, userId: string) {
+  return {
+    id: row.id,
+    user_id: userId,
+    account_id: row.accountId,
+    current: row.current,
+    available: row.available,
+    iso_currency_code: row.currency,
+    source: row.source,
+    as_of: row.asOf,
+  };
+}
+
 export function categoryToRow(category: Category, userId: string) {
   return {
     id: category.id,
@@ -167,13 +219,33 @@ export function categoryToRow(category: Category, userId: string) {
   };
 }
 
-export function budgetToRow(budget: Budget, userId: string) {
+export function cardBenefitToRow(benefit: CardBenefit, userId: string) {
   return {
-    id: budget.id,
+    id: benefit.id,
     user_id: userId,
-    category_id: budget.categoryId,
-    month: budget.month,
-    amount: budget.amount,
+    account_id: benefit.accountId,
+    name: benefit.name,
+    frequency: benefit.frequency,
+    expected_amount: benefit.expectedAmount,
+    cycle_start_month: benefit.cycleStartMonth,
+    notes: benefit.notes,
+    active: benefit.active,
+  };
+}
+
+export function benefitRedemptionToRow(
+  row: BenefitRedemption,
+  userId: string,
+) {
+  return {
+    id: row.id,
+    user_id: userId,
+    benefit_id: row.benefitId,
+    period_start: row.periodStart,
+    used_on: row.usedOn,
+    transaction_id: row.transactionId,
+    amount: row.amount,
+    notes: row.notes,
   };
 }
 
@@ -226,12 +298,42 @@ function transactionFromRow(row: Record<string, unknown>): Transaction {
   };
 }
 
-function budgetFromRow(row: Record<string, unknown>): Budget {
+function cardBenefitFromRow(row: Record<string, unknown>): CardBenefit {
   return {
     id: String(row.id),
-    categoryId: String(row.category_id),
-    month: String(row.month),
-    amount: num(row.amount as number),
+    accountId: String(row.account_id),
+    name: String(row.name),
+    frequency: row.frequency as CardBenefit["frequency"],
+    expectedAmount: numOrNull(row.expected_amount as number | null),
+    cycleStartMonth: num(row.cycle_start_month as number, 1),
+    notes: String(row.notes ?? ""),
+    active: row.active === undefined ? true : Boolean(row.active),
+  };
+}
+
+function benefitRedemptionFromRow(
+  row: Record<string, unknown>,
+): BenefitRedemption {
+  return {
+    id: String(row.id),
+    benefitId: String(row.benefit_id),
+    periodStart: String(row.period_start),
+    usedOn: String(row.used_on).slice(0, 10),
+    transactionId: (row.transaction_id as string | null) ?? null,
+    amount: numOrNull(row.amount as number | null),
+    notes: String(row.notes ?? ""),
+  };
+}
+
+function accountBalanceFromRow(row: Record<string, unknown>): AccountBalance {
+  return {
+    id: String(row.id),
+    accountId: String(row.account_id),
+    current: numOrNull(row.current as number | null),
+    available: numOrNull(row.available as number | null),
+    currency: String(row.iso_currency_code ?? "USD"),
+    source: (row.source as AccountBalance["source"]) ?? "plaid",
+    asOf: String(row.as_of),
   };
 }
 

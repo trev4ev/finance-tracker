@@ -5,9 +5,8 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ChevronDown, ChevronLeft, ChevronRight, Plus, Search } from "lucide-react";
 import { NativeDateInput, NativeSelect } from "@/components/form-controls";
 import { Fab } from "@/components/Fab";
-import { Modal } from "@/components/Modal";
 import { SegmentedControl } from "@/components/SegmentedControl";
-import { TransactionForm } from "@/components/TransactionForm";
+import { TransactionModal } from "@/components/TransactionModal";
 import { TransactionRow } from "@/components/TransactionRow";
 import { formatDayHeading, formatDisplayDate } from "@/lib/dates";
 import {
@@ -16,6 +15,7 @@ import {
   lookup,
   transactionDetailLabel,
 } from "@/lib/finance";
+import { transactionBenefitName } from "@/lib/benefits";
 import { formatMoney } from "@/lib/money";
 import { useFinance } from "@/lib/store";
 import { transactionsHref } from "@/lib/transactions-href";
@@ -309,6 +309,7 @@ function TransactionsList() {
                         category={lookup(state.categories, tx.categoryId)}
                         account={lookup(state.accounts, tx.accountId)}
                         toAccount={lookup(state.accounts, tx.toAccountId)}
+                        benefitName={transactionBenefitName(state, tx.id)}
                         onClick={() => setEditing(tx)}
                       />
                     </li>
@@ -325,6 +326,7 @@ function TransactionsList() {
                       category={lookup(state.categories, tx.categoryId)}
                       account={lookup(state.accounts, tx.accountId)}
                       toAccount={lookup(state.accounts, tx.toAccountId)}
+                      benefitName={transactionBenefitName(state, tx.id)}
                       onClick={() => setEditing(tx)}
                     />
                   </li>
@@ -390,7 +392,8 @@ function TransactionsList() {
                       ) : null}
                     </p>
                     <p className="text-xs text-muted">
-                      {transactionDetailLabel(tx, state)}
+                      {transactionBenefitName(state, tx.id) ??
+                        transactionDetailLabel(tx, state)}
                     </p>
                   </td>
                   <td className="px-4 py-3 text-muted">{account?.name}</td>
@@ -458,33 +461,14 @@ function TransactionsList() {
       )}
 
       {editing ? (
-        <Modal
-          title={editing === "new" ? "Add transaction" : "Edit transaction"}
+        <TransactionModal
+          editing={editing}
+          state={state}
           onClose={() => setEditing(null)}
-        >
-          <TransactionForm
-            state={state}
-            initial={editing === "new" ? undefined : editing}
-            onCancel={() => setEditing(null)}
-            onSubmit={(tx) => {
-              if (editing === "new") addTransaction(tx);
-              else updateTransaction({ ...editing, ...tx, id: editing.id });
-              setEditing(null);
-            }}
-          />
-          {editing !== "new" ? (
-            <button
-              type="button"
-              className="mt-3 min-h-11 w-full rounded-xl border border-expense/30 px-4 py-2 text-sm text-expense active:bg-expense/10"
-              onClick={() => {
-                deleteTransaction(editing.id);
-                setEditing(null);
-              }}
-            >
-              Delete transaction
-            </button>
-          ) : null}
-        </Modal>
+          onAdd={addTransaction}
+          onUpdate={updateTransaction}
+          onDelete={deleteTransaction}
+        />
       ) : null}
     </div>
   );

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { NativeDateInput, NativeSelect } from "@/components/form-controls";
+import { benefitsForAccount, redemptionForTransaction } from "@/lib/benefits";
 import { formatMoney, parseAmount, sameMoney } from "@/lib/money";
 import { todayISO } from "@/lib/dates";
 import type {
@@ -30,7 +31,7 @@ export function TransactionForm({
 }: {
   state: FinanceState;
   initial?: Transaction;
-  onSubmit: (tx: TransactionInput) => void;
+  onSubmit: (tx: TransactionInput, benefitId: string | null) => void;
   onCancel: () => void;
 }) {
   const [form, setForm] = useState(() =>
@@ -44,21 +45,35 @@ export function TransactionForm({
           categoryId: initial.categoryId ?? "",
           toAccountId: initial.toAccountId ?? "",
           notes: initial.notes,
+          benefitId:
+            redemptionForTransaction(state.benefitRedemptions, initial.id)
+              ?.benefitId ?? "",
         }
       : {
           ...emptyForm,
           accountId: state.accounts[0]?.id ?? "",
+          benefitId: "",
         },
   );
   const [error, setError] = useState("");
   const [showNotes, setShowNotes] = useState(() => Boolean(initial?.notes));
+  const readOnly = Boolean(initial?.pending);
 
   const categories = state.categories.filter((category) =>
     form.type === "income" ? category.kind === "income" : category.kind === "expense",
   );
+  const accountBenefits = benefitsForAccount(
+    state.cardBenefits,
+    form.accountId,
+    form.benefitId,
+  );
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
+    if (readOnly) {
+      onCancel();
+      return;
+    }
     const amount = parseAmount(form.amount);
     if (!form.description.trim()) {
       setError("Add a description.");
@@ -80,32 +95,45 @@ export function TransactionForm({
       setError("Pick two different accounts.");
       return;
     }
-    onSubmit({
-      id: initial?.id,
-      date: form.date,
-      description: form.description.trim(),
-      amount,
-      originalAmount: initial?.originalAmount ?? amount,
-      type: form.type,
-      accountId: form.accountId,
-      categoryId: form.categoryId || null,
-      toAccountId: form.type === "transfer" ? form.toAccountId || null : null,
-      notes: form.notes.trim(),
-    });
+    onSubmit(
+      {
+        id: initial?.id,
+        date: form.date,
+        description: form.description.trim(),
+        amount,
+        originalAmount: initial?.originalAmount ?? amount,
+        type: form.type,
+        accountId: form.accountId,
+        categoryId: form.categoryId || null,
+        toAccountId: form.type === "transfer" ? form.toAccountId || null : null,
+        notes: form.notes.trim(),
+      },
+      form.type === "income" ? form.benefitId || null : null,
+    );
   }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {readOnly ? (
+        <p className="rounded-xl border border-border bg-surface-2 px-3 py-2 text-sm text-muted">
+          Pending bank charges can&apos;t be edited. Amount and category are replaced when
+          the transaction posts.
+        </p>
+      ) : null}
+
       <div className="grid grid-cols-3 gap-2">
         {(["expense", "income", "transfer"] as TransactionType[]).map((type) => (
           <button
             key={type}
             type="button"
-            onClick={() => setForm((prev) => ({ ...prev, type, categoryId: "" }))}
-            className={`min-h-12 rounded-xl border px-2 text-sm capitalize ${
+            disabled={readOnly}
+            onClick={() =>
+              setForm((prev) => ({ ...prev, type, categoryId: "", benefitId: "" }))
+            }
+            className={`min-h-12 rounded-xl border px-2 text-sm capitalize disabled:cursor-not-allowed ${
               form.type === type
                 ? "border-accent bg-accent/10 text-accent"
-                : "border-border text-muted active:bg-surface-2"
+                : "border-border text-muted active:bg-surface-2 disabled:active:bg-transparent"
             }`}
           >
             {type}
@@ -120,7 +148,8 @@ export function TransactionForm({
           onChange={(event) =>
             setForm((prev) => ({ ...prev, description: event.target.value }))
           }
-          className="h-12 w-full rounded-xl border border-border bg-surface-2 px-3 text-base outline-none focus:border-accent sm:h-11 sm:text-sm"
+          disabled={readOnly}
+          className="h-12 w-full rounded-xl border border-border bg-surface-2 px-3 text-base outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-60 sm:h-11 sm:text-sm"
           placeholder="Coffee, payroll, rent…"
         />
       </label>
@@ -133,18 +162,19 @@ export function TransactionForm({
             onChange={(event) =>
               setForm((prev) => ({ ...prev, amount: event.target.value }))
             }
+            disabled={readOnly}
             inputMode="decimal"
-            className="h-12 w-full rounded-xl border border-border bg-surface-2 px-3 font-mono text-base outline-none focus:border-accent sm:h-11 sm:text-sm"
+            className="h-12 w-full rounded-xl border border-border bg-surface-2 px-3 font-mono text-base outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-60 sm:h-11 sm:text-sm"
             placeholder="0.00"
           />
-          {initial ? (
+          {initial && !readOnly ? (
             <p className="mt-1 text-xs text-muted">
               {sameMoney(
                 parseAmount(form.amount) ?? initial.amount,
                 initial.originalAmount,
               )
                 ? "If you covered others, lower this to your share. The original charge is kept."
-                : `Your share for budgets. Original charge ${formatMoney(initial.originalAmount)}.`}
+                : `Your share. Original charge ${formatMoney(initial.originalAmount)}.`}
             </p>
           ) : null}
         </label>
@@ -152,6 +182,7 @@ export function TransactionForm({
           <span className="mb-1 block text-muted">Date</span>
           <NativeDateInput
             value={form.date}
+            disabled={readOnly}
             onChange={(event) =>
               setForm((prev) => ({ ...prev, date: event.target.value }))
             }
@@ -165,8 +196,20 @@ export function TransactionForm({
         </span>
         <NativeSelect
           value={form.accountId}
+          disabled={readOnly}
           onChange={(event) =>
-            setForm((prev) => ({ ...prev, accountId: event.target.value }))
+            setForm((prev) => {
+              const accountId = event.target.value;
+              const stillValid = benefitsForAccount(
+                state.cardBenefits,
+                accountId,
+              ).some((benefit) => benefit.id === prev.benefitId);
+              return {
+                ...prev,
+                accountId,
+                benefitId: stillValid ? prev.benefitId : "",
+              };
+            })
           }
         >
           {state.accounts.map((account) => (
@@ -182,6 +225,7 @@ export function TransactionForm({
           <span className="mb-1 block text-muted">To account</span>
           <NativeSelect
             value={form.toAccountId}
+            disabled={readOnly}
             onChange={(event) =>
               setForm((prev) => ({ ...prev, toAccountId: event.target.value }))
             }
@@ -200,6 +244,7 @@ export function TransactionForm({
         <span className="mb-1 block text-muted">Category</span>
         <NativeSelect
           value={form.categoryId}
+          disabled={readOnly}
           onChange={(event) =>
             setForm((prev) => ({ ...prev, categoryId: event.target.value }))
           }
@@ -213,6 +258,26 @@ export function TransactionForm({
         </NativeSelect>
       </div>
 
+      {form.type === "income" && accountBenefits.length > 0 ? (
+        <div className="block text-sm">
+          <span className="mb-1 block text-muted">Card benefit</span>
+          <NativeSelect
+            value={form.benefitId}
+            disabled={readOnly}
+            onChange={(event) =>
+              setForm((prev) => ({ ...prev, benefitId: event.target.value }))
+            }
+          >
+            <option value="">Not a card benefit</option>
+            {accountBenefits.map((benefit) => (
+              <option key={benefit.id} value={benefit.id}>
+                {benefit.name}
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
+      ) : null}
+
       {showNotes ? (
         <label className="block text-sm">
           <span className="mb-1 block text-muted">Notes</span>
@@ -221,11 +286,12 @@ export function TransactionForm({
             onChange={(event) =>
               setForm((prev) => ({ ...prev, notes: event.target.value }))
             }
+            disabled={readOnly}
             rows={2}
-            className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-base outline-none focus:border-accent sm:text-sm"
+            className="w-full rounded-xl border border-border bg-surface-2 px-3 py-2 text-base outline-none focus:border-accent disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
           />
         </label>
-      ) : (
+      ) : readOnly ? null : (
         <button
           type="button"
           onClick={() => setShowNotes(true)}
@@ -249,7 +315,7 @@ export function TransactionForm({
           type="submit"
           className="min-h-12 w-full rounded-xl bg-accent px-4 text-sm font-medium text-background sm:min-h-11 sm:w-auto"
         >
-          {initial ? "Save changes" : "Add transaction"}
+          {readOnly ? "Done" : initial ? "Save changes" : "Add transaction"}
         </button>
       </div>
     </form>

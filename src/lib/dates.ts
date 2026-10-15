@@ -9,6 +9,14 @@ export function toISODate(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+/** Calendar day for a `YYYY-MM-DD` value or an ISO timestamp. */
+export function timestampToISODate(iso: string): string {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso;
+  const date = new Date(iso);
+  if (!Number.isFinite(date.getTime())) return iso.slice(0, 10);
+  return toISODate(date);
+}
+
 export function currentMonth(): string {
   return todayISO().slice(0, 7);
 }

@@ -19,7 +19,7 @@ const asset = (path: string) => `${basePath}${path}`;
 export const metadata: Metadata = {
   title: "Ledger — Personal finance tracker",
   description:
-    "Track accounts, transactions, and budgets. Sync to Supabase and link banks with Plaid.",
+    "Track accounts, transactions, and credit card benefits. Sync to Supabase and link banks with Plaid.",
   applicationName: "Ledger",
   // Stable filenames (no query hash) so iOS “Add to Home Screen” picks these up.
   // Next.js does not prefix metadata.icons with `basePath` for static export.

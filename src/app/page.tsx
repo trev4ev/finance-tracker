@@ -6,11 +6,10 @@ import { ChevronRight, Plus } from "lucide-react";
 import { CashFlowChart } from "@/components/CashFlowChart";
 import { CategoryDonut } from "@/components/CategoryDonut";
 import { Fab } from "@/components/Fab";
-import { Modal } from "@/components/Modal";
 import { MonthSwitcher } from "@/components/MonthSwitcher";
 import { SegmentedControl } from "@/components/SegmentedControl";
 import { StatCard } from "@/components/StatCard";
-import { TransactionForm } from "@/components/TransactionForm";
+import { TransactionModal } from "@/components/TransactionModal";
 import { TransactionRow } from "@/components/TransactionRow";
 import {
   currentMonth,
@@ -30,6 +29,7 @@ import {
   sortTransactions,
   spendingByCategory,
 } from "@/lib/finance";
+import { transactionBenefitName } from "@/lib/benefits";
 import { formatMoney, formatSignedMoney } from "@/lib/money";
 import { useFinance } from "@/lib/store";
 import { transactionsHref } from "@/lib/transactions-href";
@@ -262,6 +262,7 @@ export default function OverviewPage() {
                 category={lookup(state.categories, tx.categoryId)}
                 account={lookup(state.accounts, tx.accountId)}
                 toAccount={lookup(state.accounts, tx.toAccountId)}
+                benefitName={transactionBenefitName(state, tx.id)}
                 onClick={() => setEditing(tx)}
               />
             </li>
@@ -330,6 +331,7 @@ export default function OverviewPage() {
                   category={lookup(state.categories, tx.categoryId)}
                   account={lookup(state.accounts, tx.accountId)}
                   toAccount={lookup(state.accounts, tx.toAccountId)}
+                  benefitName={transactionBenefitName(state, tx.id)}
                   onClick={() => setEditing(tx)}
                 />
               </li>
@@ -343,33 +345,14 @@ export default function OverviewPage() {
       )}
 
       {editing ? (
-        <Modal
-          title={editing === "new" ? "Add transaction" : "Edit transaction"}
+        <TransactionModal
+          editing={editing}
+          state={state}
           onClose={() => setEditing(null)}
-        >
-          <TransactionForm
-            state={state}
-            initial={editing === "new" ? undefined : editing}
-            onCancel={() => setEditing(null)}
-            onSubmit={(tx) => {
-              if (editing === "new") addTransaction(tx);
-              else updateTransaction({ ...editing, ...tx, id: editing.id });
-              setEditing(null);
-            }}
-          />
-          {editing !== "new" ? (
-            <button
-              type="button"
-              className="mt-3 min-h-11 w-full rounded-xl border border-expense/30 px-4 py-2 text-sm text-expense active:bg-expense/10"
-              onClick={() => {
-                deleteTransaction(editing.id);
-                setEditing(null);
-              }}
-            >
-              Delete transaction
-            </button>
-          ) : null}
-        </Modal>
+          onAdd={addTransaction}
+          onUpdate={updateTransaction}
+          onDelete={deleteTransaction}
+        />
       ) : null}
     </div>
   );

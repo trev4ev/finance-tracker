@@ -204,7 +204,7 @@ export default function SettingsPage() {
           <button
             type="button"
             onClick={() => {
-              if (confirm("Clear all accounts, transactions, and budgets?")) {
+              if (confirm("Clear all accounts, transactions, and benefits?")) {
                 resetAll();
               }
             }}

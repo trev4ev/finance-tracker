@@ -1,7 +1,7 @@
 # Ledger
 
 A personal finance tracker for income, expenses, transfers, cash flow, and
-category budgets. Data can stay in the browser, or sync to Supabase when you
+credit card benefits. Data can stay in the browser, or sync to Supabase when you
 sign in. Linked banks import accounts, balances, and transactions through Plaid.
 
 The UI is a static Next.js export (GitHub Pages). Auth signup and Plaid run as
@@ -12,7 +12,7 @@ Supabase Edge Functions.
 - Overview dashboard with income, expenses, net cash flow, net worth, category spending, and a 6-month cash-flow chart
 - Transactions with search, type filters, and add/edit/delete
 - Accounts (checking, savings, credit, cash, investment, loan) with live balances
-- Monthly budgets per spending category
+- Credit card benefits (monthly, semiannual, and annual credits) with optional transaction links
 - CSV import/export
 - Optional **Supabase** persistence for transactions, accounts, and balance snapshots
 - Optional **Plaid Link** to connect banks and sync transactions/balances
@@ -48,7 +48,7 @@ supabase functions deploy plaid --no-verify-jwt
 
 5. Enable Email auth. Sign in from `/login` with email and password.
 
-Signed-in users store accounts, categories, transactions, budgets, and Plaid items in Postgres with RLS. Plaid access tokens are encrypted at rest. The first time you sign in, non-sample local data is uploaded if the cloud ledger is empty.
+Signed-in users store accounts, categories, transactions, card benefits, and Plaid items in Postgres with RLS. Plaid access tokens are encrypted at rest. The first time you sign in, non-sample local data is uploaded if the cloud ledger is empty.
 
 ## Plaid
 
