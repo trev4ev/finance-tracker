@@ -3,6 +3,7 @@ import type {
   AccountBalance,
   BenefitRedemption,
   CardBenefit,
+  CategoryRule,
   DataSource,
   FinanceState,
   PlaidItem,
@@ -108,6 +109,7 @@ export function normalizeState(state: {
   benefitRedemptions?: BenefitRedemption[];
   plaidItems?: PlaidItem[];
   accountBalances?: AccountBalance[];
+  categoryRules?: CategoryRule[];
 }): FinanceState {
   return {
     accounts: state.accounts.map(normalizeAccount),
@@ -119,6 +121,11 @@ export function normalizeState(state: {
     ),
     plaidItems: state.plaidItems ?? [],
     accountBalances: (state.accountBalances ?? []).map(normalizeAccountBalance),
+    categoryRules: (state.categoryRules ?? []).map((rule) => ({
+      id: rule.id,
+      merchantKey: rule.merchantKey.trim().toLowerCase(),
+      categoryId: rule.categoryId,
+    })),
   };
 }
 
@@ -178,6 +185,11 @@ export function remapStateToUuids(state: FinanceState): FinanceState {
       ...row,
       id: id(row.id)!,
       accountId: id(row.accountId)!,
+    })),
+    categoryRules: state.categoryRules.map((rule) => ({
+      ...rule,
+      id: id(rule.id)!,
+      categoryId: id(rule.categoryId)!,
     })),
   };
 }

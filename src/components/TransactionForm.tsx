@@ -5,6 +5,11 @@ import { NativeDateInput, NativeSelect } from "@/components/form-controls";
 import { benefitsForAccount, redemptionForTransaction } from "@/lib/benefits";
 import { formatMoney, parseAmount, sameMoney } from "@/lib/money";
 import { todayISO } from "@/lib/dates";
+import {
+  shouldPromptCategoryRule,
+  similarTransactions,
+  transactionMerchantKey,
+} from "@/lib/rules";
 import type {
   FinanceState,
   Transaction,
@@ -31,7 +36,11 @@ export function TransactionForm({
 }: {
   state: FinanceState;
   initial?: Transaction;
-  onSubmit: (tx: TransactionInput, benefitId: string | null) => void;
+  onSubmit: (
+    tx: TransactionInput,
+    benefitId: string | null,
+    applyRule?: boolean,
+  ) => void;
   onCancel: () => void;
 }) {
   const [form, setForm] = useState(() =>
@@ -57,6 +66,12 @@ export function TransactionForm({
   );
   const [error, setError] = useState("");
   const [showNotes, setShowNotes] = useState(() => Boolean(initial?.notes));
+  const [pendingSave, setPendingSave] = useState<{
+    tx: TransactionInput;
+    benefitId: string | null;
+    similar: number;
+    merchant: string;
+  } | null>(null);
   const readOnly = Boolean(initial?.pending);
 
   const categories = state.categories.filter((category) =>
@@ -95,21 +110,36 @@ export function TransactionForm({
       setError("Pick two different accounts.");
       return;
     }
-    onSubmit(
-      {
-        id: initial?.id,
-        date: form.date,
-        description: form.description.trim(),
-        amount,
-        originalAmount: initial?.originalAmount ?? amount,
-        type: form.type,
-        accountId: form.accountId,
-        categoryId: form.categoryId || null,
-        toAccountId: form.type === "transfer" ? form.toAccountId || null : null,
-        notes: form.notes.trim(),
-      },
-      form.type === "income" ? form.benefitId || null : null,
-    );
+    const payload: TransactionInput = {
+      id: initial?.id,
+      date: form.date,
+      description: form.description.trim(),
+      amount,
+      originalAmount: initial?.originalAmount ?? amount,
+      type: form.type,
+      accountId: form.accountId,
+      categoryId: form.categoryId || null,
+      toAccountId: form.type === "transfer" ? form.toAccountId || null : null,
+      notes: form.notes.trim(),
+      merchantName: initial?.merchantName ?? null,
+    };
+    const benefitId = form.type === "income" ? form.benefitId || null : null;
+    if (shouldPromptCategoryRule(state.categoryRules, payload)) {
+      const similar = similarTransactions(state.transactions, {
+        id: initial?.id ?? "",
+        type: payload.type,
+          merchantName: payload.merchantName ?? null,
+        description: payload.description,
+      }).length;
+      setPendingSave({
+        tx: payload,
+        benefitId,
+        similar,
+        merchant: transactionMerchantKey(payload),
+      });
+      return;
+    }
+    onSubmit(payload, benefitId);
   }
 
   return (
@@ -303,21 +333,51 @@ export function TransactionForm({
 
       {error ? <p className="text-sm text-expense">{error}</p> : null}
 
-      <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
-        <button
-          type="button"
-          onClick={onCancel}
-          className="hidden min-h-11 rounded-xl px-4 py-2 text-sm text-muted active:bg-surface-2 sm:inline-flex sm:items-center"
-        >
-          Cancel
-        </button>
-        <button
-          type="submit"
-          className="min-h-12 w-full rounded-xl bg-accent px-4 text-sm font-medium text-background sm:min-h-11 sm:w-auto"
-        >
-          {readOnly ? "Done" : initial ? "Save changes" : "Add transaction"}
-        </button>
-      </div>
+      {pendingSave ? (
+        <div className="space-y-3 rounded-xl border border-border bg-surface-2 px-3 py-3">
+          <p className="text-sm">
+            {pendingSave.similar > 0
+              ? `Apply this category to ${pendingSave.similar} other ${pendingSave.merchant} transaction${pendingSave.similar === 1 ? "" : "s"} and future matches?`
+              : `Remember this category for future ${pendingSave.merchant} charges?`}
+          </p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={() => {
+                onSubmit(pendingSave.tx, pendingSave.benefitId, false);
+              }}
+              className="min-h-11 rounded-xl border border-border px-4 text-sm active:bg-surface"
+            >
+              Just this one
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onSubmit(pendingSave.tx, pendingSave.benefitId, true);
+              }}
+              className="min-h-11 rounded-xl bg-accent px-4 text-sm font-medium text-background"
+            >
+              {pendingSave.similar > 0 ? "Apply to all" : "Remember for later"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex flex-col-reverse gap-2 pt-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="hidden min-h-11 rounded-xl px-4 py-2 text-sm text-muted active:bg-surface-2 sm:inline-flex sm:items-center"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="min-h-12 w-full rounded-xl bg-accent px-4 text-sm font-medium text-background sm:min-h-11 sm:w-auto"
+          >
+            {readOnly ? "Done" : initial ? "Save changes" : "Add transaction"}
+          </button>
+        </div>
+      )}
     </form>
   );
 }

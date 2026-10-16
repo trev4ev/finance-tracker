@@ -6,6 +6,7 @@ import type {
   BenefitRedemption,
   CardBenefit,
   Category,
+  CategoryRule,
   FinanceState,
   PlaidItem,
   Transaction,
@@ -52,6 +53,7 @@ export async function loadFinanceState(
       benefitRedemptions,
       plaidItems,
       accountBalances,
+      categoryRules,
     ] = await Promise.all([
       supabase.from("accounts").select("*").eq("user_id", userId),
       supabase.from("categories").select("*").eq("user_id", userId),
@@ -67,6 +69,7 @@ export async function loadFinanceState(
         .select("*")
         .eq("user_id", userId)
         .order("as_of", { ascending: true }),
+      supabase.from("category_rules").select("*").eq("user_id", userId),
     ]);
 
     const error =
@@ -76,7 +79,8 @@ export async function loadFinanceState(
       cardBenefits.error ||
       benefitRedemptions.error ||
       plaidItems.error ||
-      accountBalances.error;
+      accountBalances.error ||
+      categoryRules.error;
     if (!error) {
       return normalizeState({
         accounts: (accounts.data ?? []).map(accountFromRow),
@@ -90,6 +94,7 @@ export async function loadFinanceState(
         accountBalances: (accountBalances.data ?? []).map(
           accountBalanceFromRow,
         ),
+        categoryRules: (categoryRules.data ?? []).map(categoryRuleFromRow),
       });
     }
     lastError = error;
@@ -114,6 +119,7 @@ export async function replaceFinanceState(
   await del("account_balances");
   await del("accounts");
   await del("plaid_items");
+  await del("category_rules");
   await del("categories");
 
   if (state.categories.length > 0) {
@@ -151,6 +157,12 @@ export async function replaceFinanceState(
   if (state.accountBalances.length > 0) {
     const { error } = await supabase.from("account_balances").insert(
       state.accountBalances.map((row) => accountBalanceToRow(row, userId)),
+    );
+    if (error) throw error;
+  }
+  if (state.categoryRules.length > 0) {
+    const { error } = await supabase.from("category_rules").insert(
+      state.categoryRules.map((row) => categoryRuleToRow(row, userId)),
     );
     if (error) throw error;
   }
@@ -230,6 +242,15 @@ export function cardBenefitToRow(benefit: CardBenefit, userId: string) {
     cycle_start_month: benefit.cycleStartMonth,
     notes: benefit.notes,
     active: benefit.active,
+  };
+}
+
+export function categoryRuleToRow(rule: CategoryRule, userId: string) {
+  return {
+    id: rule.id,
+    user_id: userId,
+    merchant_key: rule.merchantKey,
+    category_id: rule.categoryId,
   };
 }
 
@@ -334,6 +355,14 @@ function accountBalanceFromRow(row: Record<string, unknown>): AccountBalance {
     currency: String(row.iso_currency_code ?? "USD"),
     source: (row.source as AccountBalance["source"]) ?? "plaid",
     asOf: String(row.as_of),
+  };
+}
+
+function categoryRuleFromRow(row: Record<string, unknown>): CategoryRule {
+  return {
+    id: String(row.id),
+    merchantKey: String(row.merchant_key),
+    categoryId: String(row.category_id),
   };
 }
 

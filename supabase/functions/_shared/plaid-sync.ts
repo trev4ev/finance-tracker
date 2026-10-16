@@ -10,6 +10,7 @@ import {
   mapNonSpendingCategory,
   mapPlaidTransactionType,
 } from "./plaid-map.ts";
+import { merchantKey } from "./rules.ts";
 
 type PlaidAccount = {
   account_id: string;
@@ -40,6 +41,7 @@ type PlaidTransaction = {
 };
 
 type CategoryRow = { id: string; name: string; kind: string };
+type CategoryRuleRow = { merchant_key: string; category_id: string; kind: string };
 
 type ItemRow = {
   id: string;
@@ -151,6 +153,24 @@ export async function syncPlaidItem(
   if (categoriesError) throw categoriesError;
   const categoryRows = (categories ?? []) as CategoryRow[];
 
+  const { data: ruleRows, error: rulesError } = await supabase
+    .from("category_rules")
+    .select("merchant_key, category_id")
+    .eq("user_id", userId);
+  if (rulesError) throw rulesError;
+  const categoryById = new Map(categoryRows.map((row) => [row.id, row]));
+  const categoryRules: CategoryRuleRow[] = (ruleRows ?? []).flatMap((row) => {
+    const category = categoryById.get(String(row.category_id));
+    if (!category) return [];
+    return [
+      {
+        merchant_key: String(row.merchant_key),
+        category_id: category.id,
+        kind: category.kind,
+      },
+    ];
+  });
+
   const accountByPlaidId = await upsertPlaidAccounts(
     supabase,
     userId,
@@ -186,6 +206,7 @@ export async function syncPlaidItem(
       [...data.added, ...data.modified],
       accountByPlaidId,
       categoryRows,
+      categoryRules,
     );
     added += data.added.length;
     modified += data.modified.length;
@@ -584,6 +605,7 @@ async function applyPlaidTransactions(
   transactions: PlaidTransaction[],
   accountByPlaidId: Map<string, string>,
   categories: CategoryRow[],
+  categoryRules: CategoryRuleRow[],
 ) {
   if (transactions.length === 0) return;
 
@@ -649,9 +671,19 @@ async function applyPlaidTransactions(
             tx.personal_finance_category?.primary,
             tx.personal_finance_category?.detailed,
           );
-    const categoryId = mapped
-      ? (findCategoryId(categories, mapped.name, mapped.kind) ?? null)
-      : null;
+    const rule = categoryRules.find((item) => {
+      if (item.merchant_key !== merchantKey(tx.merchant_name, tx.name)) {
+        return false;
+      }
+      if (type === "income") return item.kind === "income";
+      if (type === "expense") return item.kind === "expense";
+      return false;
+    });
+    const categoryId = rule
+      ? rule.category_id
+      : mapped
+        ? (findCategoryId(categories, mapped.name, mapped.kind) ?? null)
+        : null;
     const keepManualCategory =
       current != null && current.type === type && Boolean(current.category_id);
 

@@ -11,6 +11,7 @@ Supabase Edge Functions.
 
 - Overview dashboard with income, expenses, net cash flow, net worth, category spending, and a 6-month cash-flow chart
 - Transactions with search, type filters, and add/edit/delete
+- Merchant recategorization rules (“apply to similar” and future Plaid matches)
 - Accounts (checking, savings, credit, cash, investment, loan) with live balances
 - Credit card benefits (monthly, semiannual, and annual credits) with optional transaction links
 - CSV import/export

@@ -113,6 +113,13 @@ export interface PlaidItem {
   lastSyncedAt: string | null;
 }
 
+export interface CategoryRule {
+  id: string;
+  /** Lowercased merchant name, or description when merchant is blank. */
+  merchantKey: string;
+  categoryId: string;
+}
+
 export interface FinanceState {
   accounts: Account[];
   categories: Category[];
@@ -121,6 +128,7 @@ export interface FinanceState {
   benefitRedemptions: BenefitRedemption[];
   plaidItems: PlaidItem[];
   accountBalances: AccountBalance[];
+  categoryRules: CategoryRule[];
 }
 
 export const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
