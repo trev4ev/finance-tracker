@@ -25,7 +25,7 @@ export interface AccountBalance {
   asOf: string;
 }
 
-export type BenefitFrequency = "monthly" | "semiannual" | "annual";
+export type BenefitFrequency = "monthly" | "quarterly" | "semiannual" | "annual";
 
 export interface Account {
   id: string;
@@ -89,7 +89,7 @@ export interface CardBenefit {
   name: string;
   frequency: BenefitFrequency;
   expectedAmount: number | null;
-  /** 1–12. Start month for annual/semiannual cycles; ignored for monthly. */
+  /** 1–12. Start month for quarterly/semiannual/annual cycles; ignored for monthly. */
   cycleStartMonth: number;
   notes: string;
   active: boolean;
@@ -135,6 +135,7 @@ export const ACCOUNT_TYPES: { value: AccountType; label: string }[] = [
 
 export const BENEFIT_FREQUENCIES: { value: BenefitFrequency; label: string }[] = [
   { value: "monthly", label: "Monthly" },
+  { value: "quarterly", label: "Quarterly" },
   { value: "semiannual", label: "Every 6 months" },
   { value: "annual", label: "Yearly" },
 ];

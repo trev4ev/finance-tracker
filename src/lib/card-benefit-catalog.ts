@@ -113,6 +113,17 @@ export const AMEX_GOLD_BENEFITS: CatalogBenefit[] = [
   },
 ];
 
+export const HILTON_SURPASS_BENEFITS: CatalogBenefit[] = [
+  {
+    name: "Hilton credit",
+    frequency: "quarterly",
+    expectedAmount: 50,
+    cycleStartMonth: 1,
+    notes:
+      "Up to $50 each calendar quarter (Jan–Mar, Apr–Jun, Jul–Sep, Oct–Dec) for purchases made directly with a Hilton property. Unused credit does not roll over. Up to $200/year.",
+  },
+];
+
 export const UNITED_EXPLORER_BENEFITS: CatalogBenefit[] = [
   {
     name: "Instacart",
