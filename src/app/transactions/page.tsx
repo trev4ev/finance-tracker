@@ -13,6 +13,7 @@ import {
   groupTransactionsByDate,
   hasAdjustedAmount,
   lookup,
+  needsReview,
   transactionDetailLabel,
 } from "@/lib/finance";
 import { transactionBenefitName } from "@/lib/benefits";
@@ -51,8 +52,14 @@ export default function TransactionsPage() {
 function TransactionsList() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { state, hydrated, addTransaction, updateTransaction, deleteTransaction } =
-    useFinance();
+  const {
+    state,
+    hydrated,
+    addTransaction,
+    updateTransaction,
+    deleteTransaction,
+    markReviewed,
+  } = useFinance();
   const [query, setQuery] = useState("");
   const [typeFilter, setTypeFilter] = useState<"all" | TransactionType>(() =>
     parseType(searchParams.get("type")),
@@ -65,6 +72,9 @@ function TransactionsList() {
   );
   const [fromDate, setFromDate] = useState(() => searchParams.get("from") ?? "");
   const [toDate, setToDate] = useState(() => searchParams.get("to") ?? "");
+  const [reviewOnly, setReviewOnly] = useState(
+    () => searchParams.get("review") === "1",
+  );
   const [page, setPage] = useState(1);
   const [sortKey, setSortKey] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -76,6 +86,7 @@ function TransactionsList() {
     setCategoryFilter(searchParams.get("category") ?? "all");
     setFromDate(searchParams.get("from") ?? "");
     setToDate(searchParams.get("to") ?? "");
+    setReviewOnly(searchParams.get("review") === "1");
   }, [searchParams]);
 
   const categories = useMemo(
@@ -100,6 +111,7 @@ function TransactionsList() {
       }
       if (fromDate && tx.date < fromDate) return false;
       if (toDate && tx.date > toDate) return false;
+      if (reviewOnly && !needsReview(tx)) return false;
       if (!q) return true;
       const account = lookup(state.accounts, tx.accountId)?.name ?? "";
       const category = lookup(state.categories, tx.categoryId)?.name ?? "";
@@ -128,6 +140,7 @@ function TransactionsList() {
     state,
     toDate,
     typeFilter,
+    reviewOnly,
   ]);
 
   const pageCount = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
@@ -142,13 +155,14 @@ function TransactionsList() {
     accountFilter !== "all" ||
     categoryFilter !== "all" ||
     fromDate !== "" ||
-    toDate !== "";
+    toDate !== "" ||
+    reviewOnly;
   const filtersActive =
     query.trim() !== "" || typeFilter !== "all" || extraFiltersActive;
 
   useEffect(() => {
     setPage(1);
-  }, [query, typeFilter, accountFilter, categoryFilter, fromDate, toDate, sortKey, sortDir]);
+  }, [query, typeFilter, accountFilter, categoryFilter, fromDate, toDate, sortKey, sortDir, reviewOnly]);
 
   function toggleSort(key: SortKey) {
     if (sortKey === key) {
@@ -165,6 +179,7 @@ function TransactionsList() {
     category?: string;
     from?: string;
     to?: string;
+    review?: boolean;
   }) {
     const next = {
       type: patch.type ?? typeFilter,
@@ -172,12 +187,14 @@ function TransactionsList() {
       category: patch.category ?? categoryFilter,
       from: patch.from ?? fromDate,
       to: patch.to ?? toDate,
+      review: patch.review ?? reviewOnly,
     };
     if (patch.type !== undefined) setTypeFilter(patch.type);
     if (patch.account !== undefined) setAccountFilter(patch.account);
     if (patch.category !== undefined) setCategoryFilter(patch.category);
     if (patch.from !== undefined) setFromDate(patch.from);
     if (patch.to !== undefined) setToDate(patch.to);
+    if (patch.review !== undefined) setReviewOnly(patch.review);
     router.replace(transactionsHref(next));
   }
 
@@ -227,6 +244,33 @@ function TransactionsList() {
           onChange={(value) => updateFilters({ type: value })}
           options={TYPE_FILTERS}
         />
+        {state.transactions.some(needsReview) || reviewOnly ? (
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => updateFilters({ review: !reviewOnly })}
+              className={`inline-flex h-11 items-center rounded-xl px-3 text-sm ${
+                reviewOnly
+                  ? "bg-accent/15 text-accent"
+                  : "border border-border text-muted active:bg-surface-2"
+              }`}
+            >
+              To review
+              <span className="ml-2 font-mono">
+                {state.transactions.filter(needsReview).length}
+              </span>
+            </button>
+            {reviewOnly && pageRows.length > 0 ? (
+              <button
+                type="button"
+                onClick={() => markReviewed(pageRows.map((tx) => tx.id))}
+                className="inline-flex h-11 items-center rounded-xl border border-border px-3 text-sm text-muted active:bg-surface-2"
+              >
+                Looks good
+              </button>
+            ) : null}
+          </div>
+        ) : null}
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
           <div className="block text-sm">
             <span className="mb-1 block text-muted">From</span>
@@ -311,6 +355,9 @@ function TransactionsList() {
                         toAccount={lookup(state.accounts, tx.toAccountId)}
                         benefitName={transactionBenefitName(state, tx.id)}
                         onClick={() => setEditing(tx)}
+                        onLooksGood={
+                          reviewOnly ? () => markReviewed(tx.id) : undefined
+                        }
                       />
                     </li>
                   ))}
@@ -328,6 +375,9 @@ function TransactionsList() {
                       toAccount={lookup(state.accounts, tx.toAccountId)}
                       benefitName={transactionBenefitName(state, tx.id)}
                       onClick={() => setEditing(tx)}
+                      onLooksGood={
+                        reviewOnly ? () => markReviewed(tx.id) : undefined
+                      }
                     />
                   </li>
                 ))}
@@ -468,6 +518,7 @@ function TransactionsList() {
           onAdd={addTransaction}
           onUpdate={updateTransaction}
           onDelete={deleteTransaction}
+          onLooksGood={markReviewed}
         />
       ) : null}
     </div>

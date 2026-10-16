@@ -27,6 +27,7 @@ const TRANSACTION_DEFAULTS = {
   source: "manual" as DataSource,
   plaidTransactionId: null as string | null,
   pending: false,
+  reviewed: true,
   merchantName: null as string | null,
   plaidCategory: null as string | null,
 };

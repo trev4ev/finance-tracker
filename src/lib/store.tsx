@@ -83,6 +83,7 @@ type FinanceContextValue = {
   ) => void;
   deleteTransaction: (id: string) => void;
   deleteCategoryRule: (id: string) => void;
+  markReviewed: (id: string | string[]) => void;
   addBenefit: (
     benefit: Omit<CardBenefit, "id"> & { id?: string },
   ) => string;
@@ -137,10 +138,17 @@ function withAppliedRule(
     const before = state.transactions[index];
     return before != null && before.categoryId !== item.categoryId;
   });
+  const withReview = transactions.map((item, index) => {
+    const before = state.transactions[index];
+    if (before != null && before.categoryId !== item.categoryId) {
+      return { ...item, reviewed: true };
+    }
+    return item;
+  });
   return {
     state: {
       ...state,
-      transactions,
+      transactions: withReview,
       categoryRules: existing
         ? state.categoryRules.map((item) => (item.id === rule.id ? rule : item))
         : [...state.categoryRules, rule],
@@ -164,7 +172,7 @@ async function persistAppliedRule(
   for (const tx of recategorized) {
     const updated = await supabase
       .from("transactions")
-      .update({ category_id: tx.categoryId })
+      .update({ category_id: tx.categoryId, reviewed: true })
       .eq("id", tx.id);
     if (updated.error) return updated;
   }
@@ -545,7 +553,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
       updateTransaction: (tx, benefitId, options) => {
         const existing = state.transactions.find((item) => item.id === tx.id);
         if (existing?.pending) return;
-        const row = normalizeTransaction(tx);
+        const row = normalizeTransaction({ ...tx, reviewed: true });
         let patch: RedemptionPatch | null = null;
         let rule: CategoryRule | null = null;
         let recategorized: Transaction[] = [];
@@ -590,6 +598,21 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         }));
         void writeCloud((supabase) =>
           supabase.from("category_rules").delete().eq("id", id),
+        );
+      },
+      markReviewed: (id) => {
+        const ids = new Set(Array.isArray(id) ? id : [id]);
+        commit((prev) => ({
+          ...prev,
+          transactions: prev.transactions.map((tx) =>
+            ids.has(tx.id) ? { ...tx, reviewed: true } : tx,
+          ),
+        }));
+        void writeCloud((supabase) =>
+          supabase
+            .from("transactions")
+            .update({ reviewed: true })
+            .in("id", [...ids]),
         );
       },
       deleteTransaction: (id) => {

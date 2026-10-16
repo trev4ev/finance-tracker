@@ -38,8 +38,14 @@ import type { Transaction } from "@/lib/types";
 type CashFlowView = "monthly" | "daily";
 
 export default function OverviewPage() {
-  const { state, hydrated, addTransaction, updateTransaction, deleteTransaction } =
-    useFinance();
+  const {
+    state,
+    hydrated,
+    addTransaction,
+    updateTransaction,
+    deleteTransaction,
+    markReviewed,
+  } = useFinance();
   const [month, setMonth] = useState(currentMonth());
   const [cashFlowView, setCashFlowView] = useState<CashFlowView>("monthly");
   const [editing, setEditing] = useState<Transaction | "new" | null>(null);
@@ -352,6 +358,7 @@ export default function OverviewPage() {
           onAdd={addTransaction}
           onUpdate={updateTransaction}
           onDelete={deleteTransaction}
+          onLooksGood={markReviewed}
         />
       ) : null}
     </div>
