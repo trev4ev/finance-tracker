@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { NativeSelect } from "@/components/form-controls";
 import { parseTransactionsCsv, transactionsToCsv } from "@/lib/csv";
+import { invokeFunction } from "@/lib/functions";
 import { createClient } from "@/lib/supabase/client";
 import { useFinance } from "@/lib/store";
 
@@ -24,6 +25,26 @@ export default function SettingsPage() {
   const [name, setName] = useState("");
   const [kind, setKind] = useState<"income" | "expense">("expense");
   const [notice, setNotice] = useState("");
+  const [creditReminders, setCreditReminders] = useState(true);
+  const [reminderNotice, setReminderNotice] = useState("");
+  const [reminderBusy, setReminderBusy] = useState(false);
+
+  useEffect(() => {
+    if (!user || !cloudEnabled) return;
+    let cancelled = false;
+    void createClient()
+      .from("user_settings")
+      .select("credit_reminders")
+      .eq("user_id", user.id)
+      .maybeSingle()
+      .then(({ data }) => {
+        if (cancelled || !data) return;
+        setCreditReminders(data.credit_reminders !== false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [cloudEnabled, user]);
 
   if (!hydrated) {
     return <div className="h-40 animate-pulse rounded-2xl bg-surface" />;
@@ -80,6 +101,135 @@ export default function SettingsPage() {
           <p className="text-sm text-muted">
             Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
             to enable cloud sync.
+          </p>
+        )}
+      </section>
+
+      <section className="rounded-2xl border border-border bg-surface p-4 sm:p-5">
+        <h3 className="mb-2 font-medium">Credit reminders</h3>
+        <p className="mb-4 text-sm text-muted">
+          A week before month-end, email unused credits that expire that month.
+          Mail goes to your signed-in address via Resend&apos;s free tier.
+        </p>
+        {cloudEnabled && user ? (
+          <form
+            className="space-y-3"
+            onSubmit={async (event) => {
+              event.preventDefault();
+              setReminderBusy(true);
+              setReminderNotice("");
+              const { error } = await createClient()
+                .from("user_settings")
+                .upsert(
+                  {
+                    user_id: user.id,
+                    credit_reminders: creditReminders,
+                  },
+                  { onConflict: "user_id" },
+                );
+              setReminderBusy(false);
+              if (error) {
+                setReminderNotice(error.message);
+                return;
+              }
+              setReminderNotice(
+                creditReminders
+                  ? `Saved. You’ll get an email at ${user.email} about a week before month-end.`
+                  : "Saved. Reminders are off.",
+              );
+            }}
+          >
+            <p className="text-sm text-muted">
+              Send to <span className="text-foreground">{user.email}</span>
+            </p>
+            <label className="flex min-h-11 items-center gap-3 text-sm">
+              <input
+                type="checkbox"
+                checked={creditReminders}
+                onChange={(event) => setCreditReminders(event.target.checked)}
+                className="h-4 w-4 accent-accent"
+              />
+              Email me unused credits
+            </label>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <button
+                type="submit"
+                disabled={reminderBusy}
+                className="min-h-11 rounded-xl bg-accent px-4 text-sm font-medium text-background disabled:opacity-60"
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                disabled={reminderBusy}
+                onClick={async () => {
+                  setReminderBusy(true);
+                  setReminderNotice("");
+                  try {
+                    await createClient()
+                      .from("user_settings")
+                      .upsert(
+                        {
+                          user_id: user.id,
+                          credit_reminders: true,
+                        },
+                        { onConflict: "user_id" },
+                      );
+                    setCreditReminders(true);
+                    const result = await invokeFunction<{
+                      sent?: boolean;
+                      skipped?: string;
+                      credits?: number;
+                      error?: string;
+                    }>("credit-reminders", { force: true });
+                    if (result.sent) {
+                      setReminderNotice(
+                        result.credits
+                          ? `Sent a test to ${user.email} with ${result.credits} unused credit${result.credits === 1 ? "" : "s"}.`
+                          : `Sent a test to ${user.email}.`,
+                      );
+                    } else {
+                      setReminderNotice(
+                        result.error ||
+                          result.skipped ||
+                          "Nothing to send (no unused credits expiring this month).",
+                      );
+                    }
+                  } catch (err) {
+                    setReminderNotice(
+                      err instanceof Error
+                        ? err.message
+                        : "Could not send a test email.",
+                    );
+                  } finally {
+                    setReminderBusy(false);
+                  }
+                }}
+                className="min-h-11 rounded-xl border border-border px-4 text-sm active:bg-surface-2 disabled:opacity-60"
+              >
+                Send test email
+              </button>
+            </div>
+            {reminderNotice ? (
+              <p className="text-sm text-accent">{reminderNotice}</p>
+            ) : null}
+          </form>
+        ) : (
+          <p className="text-sm text-muted">
+            {cloudEnabled ? (
+              <>
+                <Link href="/login" className="text-accent">
+                  Sign in
+                </Link>{" "}
+                to email unused-credit reminders to your account. Reminders run
+                on the server, not in this browser.
+              </>
+            ) : (
+              <>
+                Set Supabase keys and sign in so a monthly server check can email
+                you. Local-only mode cannot send mail.
+              </>
+            )}
           </p>
         )}
       </section>

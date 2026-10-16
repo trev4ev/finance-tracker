@@ -1,0 +1,26 @@
+name: Unused-credit email reminders
+
+# Daily at 15:00 UTC (morning US). The function no-ops except the calendar
+# day one week before month-end.
+on:
+  schedule:
+    - cron: "0 15 * * *"
+  workflow_dispatch:
+
+jobs:
+  remind:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Invoke credit-reminders
+        env:
+          SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          CREDIT_REMINDER_SECRET: ${{ secrets.CREDIT_REMINDER_SECRET }}
+        run: |
+          if [ -z "$SUPABASE_URL" ] || [ -z "$CREDIT_REMINDER_SECRET" ]; then
+            echo "Skipping: NEXT_PUBLIC_SUPABASE_URL or CREDIT_REMINDER_SECRET is not set."
+            exit 0
+          fi
+          curl -fsS -X POST "${SUPABASE_URL}/functions/v1/credit-reminders" \
+            -H "Authorization: Bearer ${CREDIT_REMINDER_SECRET}" \
+            -H "Content-Type: application/json" \
+            -d '{"source":"cron"}'

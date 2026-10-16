@@ -52,6 +52,7 @@ import type {
 
 const STORAGE_KEY = "ledger-finance-v1";
 let plaidAutoSyncStarted = false;
+let creditReminderCheckStarted = false;
 
 type FinanceContextValue = {
   state: FinanceState;
@@ -424,6 +425,14 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     plaidAutoSyncStarted = true;
     void syncPlaid();
   }, [cloudEnabled, hydrated, state, syncPlaid, user]);
+
+  useEffect(() => {
+    if (!hydrated || !user || !cloudEnabled || creditReminderCheckStarted) return;
+    creditReminderCheckStarted = true;
+    void invokeFunction("credit-reminders").catch(() => {
+      /* Function or migration may not be deployed yet. */
+    });
+  }, [cloudEnabled, hydrated, user]);
 
   const value = useMemo<FinanceContextValue>(
     () => ({
