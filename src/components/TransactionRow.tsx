@@ -10,6 +10,7 @@ export function TransactionRow({
   account,
   toAccount,
   benefitName,
+  suggestedBenefitName,
   onClick,
   onLooksGood,
 }: {
@@ -18,15 +19,19 @@ export function TransactionRow({
   account?: Account;
   toAccount?: Account;
   benefitName?: string;
+  suggestedBenefitName?: string;
   onClick: () => void;
   onLooksGood?: () => void;
 }) {
+  const detail =
+    benefitName ??
+    (suggestedBenefitName
+      ? `Suggested: ${suggestedBenefitName}`
+      : (category?.name ?? "Uncategorized"));
   const subtitle =
     tx.type === "transfer"
       ? `${account?.name ?? "Account"} → ${toAccount?.name ?? "Account"}`
-      : [benefitName ?? category?.name ?? "Uncategorized", account?.name]
-          .filter(Boolean)
-          .join(" · ");
+      : [detail, account?.name].filter(Boolean).join(" · ");
   const color = category?.color ?? "#64748b";
   const label = (tx.merchantName ?? tx.description).trim().slice(0, 1).toUpperCase();
 

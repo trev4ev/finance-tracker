@@ -15,6 +15,7 @@ Supabase Edge Functions.
 - Review inbox for posted bank transactions until you mark them reviewed (refresh does not clear the queue)
 - Accounts (checking, savings, credit, cash, investment, loan) with live balances
 - Credit card benefits (monthly, semiannual, and annual credits) with optional transaction links
+- Suggested benefit matches from merchant names (confirm to link; viewing never auto-links)
 - CSV import/export
 - Optional **Supabase** persistence for transactions, accounts, and balance snapshots
 - Optional **Plaid Link** to connect banks and sync transactions/balances

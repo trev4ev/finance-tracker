@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { NativeDateInput, NativeSelect } from "@/components/form-controls";
+import { suggestBenefit } from "@/lib/benefit-match";
 import { benefitsForAccount, redemptionForTransaction } from "@/lib/benefits";
 import { formatMoney, parseAmount, sameMoney } from "@/lib/money";
 import { todayISO } from "@/lib/dates";
@@ -82,6 +83,20 @@ export function TransactionForm({
     form.accountId,
     form.benefitId,
   );
+  const parsedAmount = parseAmount(form.amount);
+  const suggested =
+    form.type === "transfer" || readOnly
+      ? null
+      : suggestBenefit(state, {
+          id: initial?.id,
+          date: form.date,
+          description: form.description,
+          amount: parsedAmount ?? 0,
+          type: form.type,
+          accountId: form.accountId,
+          pending: initial?.pending,
+          merchantName: initial?.merchantName ?? null,
+        });
 
   function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -123,7 +138,7 @@ export function TransactionForm({
       notes: form.notes.trim(),
       merchantName: initial?.merchantName ?? null,
     };
-    const benefitId = form.type === "income" ? form.benefitId || null : null;
+    const benefitId = form.type === "transfer" ? null : form.benefitId || null;
     if (shouldPromptCategoryRule(state.categoryRules, payload)) {
       const similar = similarTransactions(state.transactions, {
         id: initial?.id ?? "",
@@ -287,6 +302,30 @@ export function TransactionForm({
           ))}
         </NativeSelect>
       </div>
+
+      {suggested ? (
+        <label className="flex min-h-11 items-start gap-3 rounded-xl border border-border bg-surface-2 px-3 py-3 text-sm">
+          <input
+            type="checkbox"
+            checked={form.benefitId === suggested.id}
+            disabled={readOnly}
+            onChange={(event) =>
+              setForm((prev) => ({
+                ...prev,
+                benefitId: event.target.checked ? suggested.id : "",
+              }))
+            }
+            className="mt-0.5 h-4 w-4 accent-accent"
+          />
+          <span>
+            This looks like{" "}
+            <span className="font-medium">{suggested.name}</span>
+            <span className="mt-0.5 block text-xs text-muted">
+              Link it as a redemption. Unchecked stays unlinked.
+            </span>
+          </span>
+        </label>
+      ) : null}
 
       {form.type === "income" && accountBenefits.length > 0 ? (
         <div className="block text-sm">
