@@ -52,10 +52,11 @@ export function benefitPeriodStart(
     return `${year - 1}-${padMonth(start)}`;
   }
 
+  const length = frequency === "quarterly" ? 3 : 6;
   const monthIndex = year * 12 + (month - 1);
   const origin = 2000 * 12 + (start - 1);
-  const periodIndex = Math.floor((monthIndex - origin) / 6);
-  const periodMonthIndex = origin + periodIndex * 6;
+  const periodIndex = Math.floor((monthIndex - origin) / length);
+  const periodMonthIndex = origin + periodIndex * length;
   const periodYear = Math.floor(periodMonthIndex / 12);
   const periodMonth = (periodMonthIndex % 12) + 1;
   return `${periodYear}-${padMonth(periodMonth)}`;
@@ -66,6 +67,7 @@ export function benefitPeriodEndMonth(
   periodStart: string,
 ): string {
   if (frequency === "monthly") return periodStart;
+  if (frequency === "quarterly") return addMonths(periodStart, 2);
   if (frequency === "semiannual") return addMonths(periodStart, 5);
   return addMonths(periodStart, 11);
 }
@@ -89,6 +91,7 @@ export function benefitPeriodLabel(
 
 export function frequencyLabel(frequency: BenefitFrequency): string {
   if (frequency === "monthly") return "Monthly";
+  if (frequency === "quarterly") return "Quarterly";
   if (frequency === "semiannual") return "Every 6 months";
   return "Yearly";
 }
