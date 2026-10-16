@@ -241,9 +241,10 @@ export default function AccountsPage() {
           <div className="mb-2">
             <h3 className="text-sm font-medium">Linked banks</h3>
             <p className="text-xs text-muted">
-              Use Add accounts for a new card at a bank you already linked.
-              Remove a bank to free a Plaid connection; accounts and history
-              stay in Ledger as manual.
+              Chase only shares cards you pick in Plaid. Use Add accounts on
+              the Chase row and select every card you want synced — do not tap
+              Link bank again. Remove a bank to free a Plaid connection;
+              accounts and history stay in Ledger as manual.
             </p>
           </div>
           <ul className="space-y-2">

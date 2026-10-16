@@ -50,6 +50,7 @@ type ItemRow = {
 
 type AccountRow = {
   id: string;
+  name: string;
   plaid_account_id: string | null;
   plaid_item_id: string | null;
   mask: string | null;
@@ -59,15 +60,49 @@ type AccountRow = {
   created_at: string;
 };
 
-function accountFingerprint(
+const GENERIC_CANONICAL_NAMES = new Set([
+  "credit",
+  "checking",
+  "savings",
+  "debit",
+  "chase",
+  "ultimate rewards",
+]);
+
+function canonicalAccountName(
+  value: string | null | undefined,
+): string | null {
+  if (!value) return null;
+  const name = value
+    .replace(/[®℠™]/g, "")
+    .toLowerCase()
+    .replace(/&/g, "and")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(credit card|card)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return name || null;
+}
+
+function accountFingerprints(
   type: string,
   mask: string | null | undefined,
-  officialName: string | null | undefined,
-): string | null {
-  if (mask) return `${type}|mask:${mask}`;
-  const name = officialName?.trim().toLowerCase();
-  if (name) return `${type}|name:${name}`;
-  return null;
+  ...names: Array<string | null | undefined>
+): string[] {
+  const fingerprints: string[] = [];
+  const seen = new Set<string>();
+  const add = (fingerprint: string) => {
+    if (seen.has(fingerprint)) return;
+    seen.add(fingerprint);
+    fingerprints.push(fingerprint);
+  };
+  if (mask) add(`${type}|mask:${mask}`);
+  for (const value of names) {
+    const name = canonicalAccountName(value);
+    if (!name || GENERIC_CANONICAL_NAMES.has(name)) continue;
+    add(`${type}|name:${name}`);
+  }
+  return fingerprints;
 }
 
 type ExistingTransaction = {
@@ -321,7 +356,7 @@ async function upsertPlaidAccounts(
   const { data: existingRows, error: existingError } = await supabase
     .from("accounts")
     .select(
-      "id, plaid_account_id, plaid_item_id, mask, type, institution_name, official_name, created_at",
+      "id, name, plaid_account_id, plaid_item_id, mask, type, institution_name, official_name, created_at",
     )
     .eq("user_id", userId)
     .eq("source", "plaid")
@@ -338,21 +373,23 @@ async function upsertPlaidAccounts(
     if (row.plaid_account_id) {
       existingByPlaidId.set(row.plaid_account_id, row.id);
     }
-    const fingerprint = accountFingerprint(
+    const fingerprints = accountFingerprints(
       row.type,
       row.mask,
       row.official_name,
+      row.name,
     );
-    if (!fingerprint) continue;
-    if (!fingerprintAny.has(fingerprint)) {
-      fingerprintAny.set(fingerprint, row.id);
-    }
-    if (
-      institutionName &&
-      row.institution_name === institutionName &&
-      !fingerprintByInstitution.has(fingerprint)
-    ) {
-      fingerprintByInstitution.set(fingerprint, row.id);
+    for (const fingerprint of fingerprints) {
+      if (!fingerprintAny.has(fingerprint)) {
+        fingerprintAny.set(fingerprint, row.id);
+      }
+      if (
+        institutionName &&
+        row.institution_name === institutionName &&
+        !fingerprintByInstitution.has(fingerprint)
+      ) {
+        fingerprintByInstitution.set(fingerprint, row.id);
+      }
     }
   }
 
@@ -389,15 +426,22 @@ async function upsertPlaidAccounts(
     };
 
     const byPlaidId = existingByPlaidId.get(plaidAccount.account_id);
-    const fingerprint = accountFingerprint(
+    const fingerprints = accountFingerprints(
       type,
       plaidAccount.mask,
       officialName,
+      plaidAccount.name,
     );
-    const byFingerprint = fingerprint
-      ? (fingerprintByInstitution.get(fingerprint) ??
-        fingerprintAny.get(fingerprint))
-      : undefined;
+    let byFingerprint: string | undefined;
+    for (const fingerprint of fingerprints) {
+      const matched =
+        fingerprintByInstitution.get(fingerprint) ??
+        fingerprintAny.get(fingerprint);
+      if (matched && !claimedIds.has(matched)) {
+        byFingerprint = matched;
+        break;
+      }
+    }
 
     let existingId: string | undefined;
     if (byPlaidId && byFingerprint && byPlaidId !== byFingerprint) {
@@ -417,7 +461,7 @@ async function upsertPlaidAccounts(
     if (existingId) {
       claimedIds.add(existingId);
       existingByPlaidId.set(plaidAccount.account_id, existingId);
-      if (fingerprint) {
+      for (const fingerprint of fingerprints) {
         fingerprintAny.set(fingerprint, existingId);
         if (institutionName) {
           fingerprintByInstitution.set(fingerprint, existingId);
