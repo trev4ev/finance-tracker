@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { needsReview } from "./finance";
 import { normalizeTransaction } from "./normalize";
-import { reviewedForPlaidWrite } from "../../supabase/functions/_shared/plaid-review.ts";
+import { reviewedForPlaidWrite } from "./plaid-review";
 
 const base = {
   date: "2026-10-01",
