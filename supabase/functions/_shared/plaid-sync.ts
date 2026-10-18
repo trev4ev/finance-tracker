@@ -10,6 +10,7 @@ import {
   mapNonSpendingCategory,
   mapPlaidTransactionType,
 } from "./plaid-map.ts";
+import { reviewedForPlaidWrite } from "./plaid-review.ts";
 import { merchantKey } from "./rules.ts";
 
 type PlaidAccount = {
@@ -711,7 +712,7 @@ async function applyPlaidTransactions(
       source: "plaid",
       plaid_transaction_id: tx.transaction_id,
       pending: Boolean(tx.pending),
-      reviewed: posted ? false : (current?.reviewed ?? false),
+      reviewed: reviewedForPlaidWrite(type, posted, current?.reviewed),
       merchant_name: tx.merchant_name ?? null,
       plaid_category: tx.personal_finance_category?.primary ?? null,
     };

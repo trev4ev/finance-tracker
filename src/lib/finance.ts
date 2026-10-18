@@ -439,9 +439,9 @@ export function hasAdjustedAmount(tx: Transaction): boolean {
   return !sameMoney(tx.amount, cashAmount(tx));
 }
 
-/** Posted and not yet explicitly reviewed. Page views do not change this. */
+/** Posted spend/income that has not been explicitly reviewed. Transfers skip the inbox. */
 export function needsReview(tx: Transaction): boolean {
-  return !tx.pending && !tx.reviewed;
+  return !tx.pending && !tx.reviewed && tx.type !== "transfer";
 }
 
 export function lookup<T extends { id: string }>(
