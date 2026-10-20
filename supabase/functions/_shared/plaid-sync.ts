@@ -83,7 +83,19 @@ type ExistingTransaction = {
   to_account_id: string | null;
   pending: boolean;
   reviewed: boolean;
+  plaid_transaction_id: string | null;
+  created_at: string | null;
 };
+
+/** Reconnect / new Item often reissues Plaid tx ids; match prior rows by content. */
+function transactionContentKey(
+  accountId: string,
+  date: string,
+  description: string,
+  amount: number,
+): string {
+  return `${accountId}|${date}|${description}|${Math.round(amount * 100)}`;
+}
 
 type TransactionWrite = {
   id?: string;
@@ -521,6 +533,9 @@ async function upsertPlaidAccounts(
       .eq("to_account_id", merge.dropId);
     if (moveTransferError) throw moveTransferError;
 
+    // After a reconnect merge, the same charges may remain under new Plaid ids.
+    await dedupeAccountTransactionsByContent(supabase, userId, merge.keepId);
+
     const { error: deleteError } = await supabase
       .from("accounts")
       .delete()
@@ -573,6 +588,63 @@ async function upsertPlaidAccounts(
   return existingByPlaidId;
 }
 
+function rowToExisting(row: Record<string, unknown>): ExistingTransaction {
+  return {
+    id: row.id as string,
+    category_id: (row.category_id as string | null) ?? null,
+    type: row.type as string,
+    amount: Number(row.amount),
+    original_amount: Number(row.original_amount ?? row.amount),
+    notes: String(row.notes ?? ""),
+    to_account_id: (row.to_account_id as string | null) ?? null,
+    pending: Boolean(row.pending),
+    reviewed: row.reviewed === undefined ? true : Boolean(row.reviewed),
+    plaid_transaction_id: (row.plaid_transaction_id as string | null) ?? null,
+    created_at: (row.created_at as string | null) ?? null,
+  };
+}
+
+const EXISTING_TX_SELECT =
+  "id, account_id, date, description, category_id, type, amount, original_amount, notes, to_account_id, plaid_transaction_id, pending, reviewed, created_at";
+
+/** Keep one row per description + amount + date on an account (oldest wins). */
+async function dedupeAccountTransactionsByContent(
+  supabase: SupabaseClient,
+  userId: string,
+  accountId: string,
+) {
+  const { data, error } = await supabase
+    .from("transactions")
+    .select("id, date, description, amount, original_amount, created_at")
+    .eq("user_id", userId)
+    .eq("account_id", accountId)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+
+  const seen = new Set<string>();
+  const toDelete: string[] = [];
+  for (const row of data ?? []) {
+    const amount = Number(row.original_amount ?? row.amount);
+    const key = transactionContentKey(
+      accountId,
+      String(row.date),
+      String(row.description ?? ""),
+      amount,
+    );
+    if (seen.has(key)) toDelete.push(row.id as string);
+    else seen.add(key);
+  }
+
+  for (const ids of chunk(toDelete, WRITE_CHUNK)) {
+    const { error: deleteError } = await supabase
+      .from("transactions")
+      .delete()
+      .eq("user_id", userId)
+      .in("id", ids);
+    if (deleteError) throw deleteError;
+  }
+}
+
 async function fetchExistingTransactions(
   supabase: SupabaseClient,
   userId: string,
@@ -582,27 +654,60 @@ async function fetchExistingTransactions(
   for (const ids of chunk(plaidIds, WRITE_CHUNK)) {
     const { data, error } = await supabase
       .from("transactions")
-      .select("id, category_id, type, amount, original_amount, notes, to_account_id, plaid_transaction_id, pending, reviewed")
+      .select(EXISTING_TX_SELECT)
       .eq("user_id", userId)
       .in("plaid_transaction_id", ids);
     if (error) throw error;
     for (const row of data ?? []) {
       const plaidId = row.plaid_transaction_id as string | null;
       if (!plaidId) continue;
-      existing.set(plaidId, {
-        id: row.id as string,
-        category_id: (row.category_id as string | null) ?? null,
-        type: row.type as string,
-        amount: Number(row.amount),
-        original_amount: Number(row.original_amount ?? row.amount),
-        notes: String(row.notes ?? ""),
-        to_account_id: (row.to_account_id as string | null) ?? null,
-        pending: Boolean(row.pending),
-        reviewed: row.reviewed === undefined ? true : Boolean(row.reviewed),
-      });
+      existing.set(plaidId, rowToExisting(row));
     }
   }
   return existing;
+}
+
+async function fetchExistingByContent(
+  supabase: SupabaseClient,
+  userId: string,
+  accountIds: string[],
+  dates: string[],
+): Promise<Map<string, ExistingTransaction>> {
+  const byContent = new Map<string, ExistingTransaction>();
+  if (accountIds.length === 0 || dates.length === 0) return byContent;
+
+  const uniqueDates = [...new Set(dates)].sort();
+  const uniqueAccounts = [...new Set(accountIds)];
+
+  for (const accounts of chunk(uniqueAccounts, WRITE_CHUNK)) {
+    const { data, error } = await supabase
+      .from("transactions")
+      .select(EXISTING_TX_SELECT)
+      .eq("user_id", userId)
+      .in("account_id", accounts)
+      .in("date", uniqueDates);
+    if (error) throw error;
+    for (const row of data ?? []) {
+      const accountId = row.account_id as string;
+      const date = row.date as string;
+      const description = String(row.description ?? "");
+      const amount = Number(row.original_amount ?? row.amount);
+      const key = transactionContentKey(accountId, date, description, amount);
+      const mapped = rowToExisting(row);
+      const current = byContent.get(key);
+      // Prefer the oldest row when duplicates already exist.
+      if (
+        !current ||
+        (mapped.created_at &&
+          current.created_at &&
+          mapped.created_at < current.created_at) ||
+        (mapped.created_at && !current.created_at)
+      ) {
+        byContent.set(key, mapped);
+      }
+    }
+  }
+  return byContent;
 }
 
 async function applyPlaidTransactions(
@@ -643,11 +748,31 @@ async function applyPlaidTransactions(
   }
   await ensureCategories(supabase, userId, categories, neededCategories);
 
-  const existing = await fetchExistingTransactions(
+  const existingByPlaidId = await fetchExistingTransactions(
     supabase,
     userId,
     txs.map((tx) => tx.transaction_id),
   );
+
+  const contentLookups: { accountId: string; date: string }[] = [];
+  for (const tx of txs) {
+    const accountId = accountByPlaidId.get(tx.account_id);
+    if (!accountId) continue;
+    if (existingByPlaidId.has(tx.transaction_id)) continue;
+    contentLookups.push({ accountId, date: tx.date });
+  }
+  const existingByContent = await fetchExistingByContent(
+    supabase,
+    userId,
+    contentLookups.map((item) => item.accountId),
+    contentLookups.map((item) => item.date),
+  );
+
+  // Rows already claimed by a known Plaid id should not be rematched by content.
+  const claimedIds = new Set(
+    [...existingByPlaidId.values()].map((row) => row.id),
+  );
+  const accountsNeedingDedupe = new Set<string>();
 
   const inserts: TransactionWrite[] = [];
   const updates: TransactionWrite[] = [];
@@ -662,7 +787,26 @@ async function applyPlaidTransactions(
       tx.name,
       tx.merchant_name,
     );
-    const current = existing.get(tx.transaction_id);
+    const description = tx.name || tx.merchant_name || "Plaid transaction";
+    const bankAmount = mapPlaidAmount(tx.amount);
+
+    let current = existingByPlaidId.get(tx.transaction_id);
+    if (!current) {
+      const contentKey = transactionContentKey(
+        accountId,
+        tx.date,
+        description,
+        bankAmount,
+      );
+      const byContent = existingByContent.get(contentKey);
+      if (byContent && !claimedIds.has(byContent.id)) {
+        current = byContent;
+        claimedIds.add(byContent.id);
+        // Sibling rows with the same content may remain from an earlier reconnect.
+        accountsNeedingDedupe.add(accountId);
+      }
+    }
+
     if (current?.type === "transfer" && type !== "transfer") {
       type = "transfer";
     }
@@ -693,7 +837,6 @@ async function applyPlaidTransactions(
     const keepManualCategory =
       current != null && current.type === type && Boolean(current.category_id);
 
-    const bankAmount = mapPlaidAmount(tx.amount);
     const keepShare =
       current != null && !sameMoney(current.amount, current.original_amount);
     const posted = Boolean(current?.pending) && !tx.pending;
@@ -701,7 +844,7 @@ async function applyPlaidTransactions(
     const row: TransactionWrite = {
       user_id: userId,
       date: tx.date,
-      description: tx.name || tx.merchant_name || "Plaid transaction",
+      description,
       amount: keepShare && current ? current.amount : bankAmount,
       original_amount: bankAmount,
       type,
@@ -733,5 +876,9 @@ async function applyPlaidTransactions(
       .from("transactions")
       .upsert(batch, { onConflict: "id" });
     if (error) throw error;
+  }
+
+  for (const accountId of accountsNeedingDedupe) {
+    await dedupeAccountTransactionsByContent(supabase, userId, accountId);
   }
 }
