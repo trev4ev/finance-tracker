@@ -7,7 +7,8 @@ import { benefitsForAccount, redemptionForTransaction } from "@/lib/benefits";
 import { formatMoney, parseAmount, sameMoney } from "@/lib/money";
 import { todayISO } from "@/lib/dates";
 import {
-  shouldPromptCategoryRule,
+  nameOrCategoryChanged,
+  shouldPromptApplyToAll,
   similarTransactions,
   transactionMerchantKey,
 } from "@/lib/rules";
@@ -28,6 +29,30 @@ const emptyForm = {
   toAccountId: "",
   notes: "",
 };
+
+function applyToAllPrompt({
+  similar,
+  merchant,
+  nameChanged,
+  categoryChanged,
+}: {
+  similar: number;
+  merchant: string;
+  nameChanged: boolean;
+  categoryChanged: boolean;
+}): string {
+  const count = `${similar} other ${merchant} transaction${similar === 1 ? "" : "s"}`;
+  if (similar > 0 && nameChanged && categoryChanged) {
+    return `Apply this name and category to ${count} and future matches?`;
+  }
+  if (similar > 0 && nameChanged) {
+    return `Apply this name to ${count}?`;
+  }
+  if (similar > 0) {
+    return `Apply this category to ${count} and future matches?`;
+  }
+  return `Remember this category for future ${merchant} charges?`;
+}
 
 export function TransactionForm({
   state,
@@ -72,6 +97,8 @@ export function TransactionForm({
     benefitId: string | null;
     similar: number;
     merchant: string;
+    nameChanged: boolean;
+    categoryChanged: boolean;
   } | null>(null);
   const readOnly = Boolean(initial?.pending);
 
@@ -139,18 +166,24 @@ export function TransactionForm({
       merchantName: initial?.merchantName ?? null,
     };
     const benefitId = form.type === "transfer" ? null : form.benefitId || null;
-    if (shouldPromptCategoryRule(state.categoryRules, payload)) {
-      const similar = similarTransactions(state.transactions, {
-        id: initial?.id ?? "",
-        type: payload.type,
-          merchantName: payload.merchantName ?? null,
-        description: payload.description,
-      }).length;
+    const similarSample = {
+      id: initial?.id ?? "",
+      type: payload.type,
+      merchantName: (initial?.merchantName ?? payload.merchantName) ?? null,
+      description: initial?.description ?? payload.description,
+    };
+    const similar = similarTransactions(state.transactions, similarSample).length;
+    if (shouldPromptApplyToAll(state.categoryRules, payload, initial, similar)) {
+      const changed = initial
+        ? nameOrCategoryChanged(initial, payload)
+        : { nameChanged: false, categoryChanged: true };
       setPendingSave({
         tx: payload,
         benefitId,
         similar,
-        merchant: transactionMerchantKey(payload),
+        merchant: similarSample.description.trim() || transactionMerchantKey(similarSample),
+        nameChanged: changed.nameChanged,
+        categoryChanged: changed.categoryChanged,
       });
       return;
     }
@@ -375,9 +408,7 @@ export function TransactionForm({
       {pendingSave ? (
         <div className="space-y-3 rounded-xl border border-border bg-surface-2 px-3 py-3">
           <p className="text-sm">
-            {pendingSave.similar > 0
-              ? `Apply this category to ${pendingSave.similar} other ${pendingSave.merchant} transaction${pendingSave.similar === 1 ? "" : "s"} and future matches?`
-              : `Remember this category for future ${pendingSave.merchant} charges?`}
+            {applyToAllPrompt(pendingSave)}
           </p>
           <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
             <button

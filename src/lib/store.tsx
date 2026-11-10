@@ -39,7 +39,7 @@ import { invokeFunction } from "./functions";
 import { createClient } from "./supabase/client";
 import { isSupabaseConfigured } from "./supabase/env";
 import { plaidAccountsNeedSync } from "./plaid/stale";
-import { applyCategoryRule, merchantKey } from "./rules";
+import { applyCategoryRule, applyNameToSimilar, merchantKey } from "./rules";
 import type {
   Account,
   CardBenefit,
@@ -113,34 +113,63 @@ function persistLocal(state: FinanceState) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
 }
 
+function siblingUpdates(
+  before: Transaction[],
+  after: Transaction[],
+): Transaction[] {
+  return after.filter((item, index) => {
+    const original = before[index];
+    if (original == null || original.id !== item.id) return false;
+    return (
+      original.categoryId !== item.categoryId ||
+      original.description !== item.description
+    );
+  });
+}
+
 function withAppliedRule(
   state: FinanceState,
   tx: Transaction,
+  previous?: Transaction,
 ): {
   state: FinanceState;
   rule: CategoryRule | null;
   recategorized: Transaction[];
 } {
+  let transactions = state.transactions;
+  if (previous && previous.description.trim() !== tx.description.trim()) {
+    const previousKey = merchantKey(previous.merchantName, previous.description);
+    transactions = applyNameToSimilar(
+      transactions,
+      tx,
+      previousKey,
+      tx.description,
+    );
+  }
   const key = merchantKey(tx.merchantName, tx.description);
-  if (!key || !tx.categoryId) {
-    return { state, rule: null, recategorized: [] };
+  const categoryChanged =
+    !previous || (previous.categoryId ?? "") !== (tx.categoryId ?? "");
+  if (!key || !tx.categoryId || !categoryChanged) {
+    return {
+      state: { ...state, transactions },
+      rule: null,
+      recategorized: siblingUpdates(state.transactions, transactions).filter(
+        (item) => item.id !== tx.id,
+      ),
+    };
   }
   const existing = state.categoryRules.find((rule) => rule.merchantKey === key);
   const rule: CategoryRule = existing
     ? { ...existing, categoryId: tx.categoryId }
     : { id: crypto.randomUUID(), merchantKey: key, categoryId: tx.categoryId };
-  const transactions = applyCategoryRule(
-    state.transactions,
+  const categorized = applyCategoryRule(
+    transactions,
     state.categories,
     key,
     tx.categoryId,
   );
-  const recategorized = transactions.filter((item, index) => {
-    const before = state.transactions[index];
-    return before != null && before.categoryId !== item.categoryId;
-  });
-  const withReview = transactions.map((item, index) => {
-    const before = state.transactions[index];
+  const withReview = categorized.map((item, index) => {
+    const before = transactions[index];
     if (before != null && before.categoryId !== item.categoryId) {
       return { ...item, reviewed: true };
     }
@@ -155,7 +184,9 @@ function withAppliedRule(
         : [...state.categoryRules, rule],
     },
     rule,
-    recategorized,
+    recategorized: siblingUpdates(state.transactions, withReview).filter(
+      (item) => item.id !== tx.id,
+    ),
   };
 }
 
@@ -165,15 +196,20 @@ async function persistAppliedRule(
   rule: CategoryRule | null,
   recategorized: Transaction[],
 ): Promise<{ error: { message: string } | null }> {
-  if (!rule) return { error: null };
-  const saved = await supabase
-    .from("category_rules")
-    .upsert(categoryRuleToRow(rule, userId));
-  if (saved.error) return saved;
+  if (rule) {
+    const saved = await supabase
+      .from("category_rules")
+      .upsert(categoryRuleToRow(rule, userId));
+    if (saved.error) return saved;
+  }
   for (const tx of recategorized) {
     const updated = await supabase
       .from("transactions")
-      .update({ category_id: tx.categoryId, reviewed: true })
+      .update({
+        category_id: tx.categoryId,
+        description: tx.description,
+        reviewed: true,
+      })
       .eq("id", tx.id);
     if (updated.error) return updated;
   }
@@ -574,7 +610,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
             ),
           };
           const withRule = options?.applyRule
-            ? withAppliedRule(withTx, row)
+            ? withAppliedRule(withTx, row, existing)
             : { state: withTx, rule: null, recategorized: [] as Transaction[] };
           rule = withRule.rule;
           recategorized = withRule.recategorized;
