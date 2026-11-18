@@ -76,13 +76,14 @@ export function normalizeCardBenefit(
 }
 
 export function normalizeBenefitRedemption(
-  row: BenefitRedemption,
+  row: Omit<BenefitRedemption, "status"> & Partial<BenefitRedemption>,
 ): BenefitRedemption {
   return {
     ...row,
     transactionId: row.transactionId ?? null,
     amount: row.amount ?? null,
     notes: row.notes ?? "",
+    status: row.status === "in_progress" ? "in_progress" : "used",
   };
 }
 
@@ -107,7 +108,9 @@ export function normalizeState(state: {
   cardBenefits?: Array<
     Pick<CardBenefit, "id" | "accountId" | "name" | "frequency"> & Partial<CardBenefit>
   >;
-  benefitRedemptions?: BenefitRedemption[];
+  benefitRedemptions?: Array<
+    Omit<BenefitRedemption, "status"> & Partial<BenefitRedemption>
+  >;
   plaidItems?: PlaidItem[];
   accountBalances?: AccountBalance[];
   categoryRules?: CategoryRule[];

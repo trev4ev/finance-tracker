@@ -28,7 +28,7 @@ export function unusedExpiringBenefits(
     asOf,
   ).filter(
     (row) =>
-      !row.used &&
+      row.usage === "available" &&
       benefitPeriodEndMonth(row.benefit.frequency, row.periodStart) === month,
   );
 }

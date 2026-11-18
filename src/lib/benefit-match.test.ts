@@ -75,6 +75,7 @@ const travel = benefit({
     transactionId: "other",
     amount: 10,
     notes: "",
+    status: "used",
   };
   const tx = normalizeTransaction({
     id: "tx-dd-2",
@@ -90,6 +91,35 @@ const travel = benefit({
   });
   assert.equal(
     suggestBenefit(state([grocery, grocery2, restaurant], [used]), tx)?.id,
+    grocery2.id,
+  );
+}
+
+{
+  const pending: BenefitRedemption = {
+    id: "red-progress",
+    benefitId: grocery.id,
+    periodStart: "2026-10",
+    usedOn: "2026-10-02",
+    transactionId: null,
+    amount: 10,
+    notes: "",
+    status: "in_progress",
+  };
+  const tx = normalizeTransaction({
+    id: "tx-dd-progress",
+    date: "2026-10-12",
+    description: "DoorDash",
+    amount: 19,
+    type: "expense",
+    accountId: "acc-csr",
+    categoryId: null,
+    toAccountId: null,
+    notes: "",
+    merchantName: "DoorDash",
+  });
+  assert.equal(
+    suggestBenefit(state([grocery, grocery2], [pending]), tx)?.id,
     grocery2.id,
   );
 }
@@ -217,6 +247,7 @@ const travel = benefit({
     transactionId: linked.id,
     amount: linked.amount,
     notes: "",
+    status: "used",
   };
   assert.equal(suggestBenefit(state([lyft], [redemption]), linked), null);
 }

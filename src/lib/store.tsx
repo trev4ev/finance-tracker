@@ -42,6 +42,7 @@ import { plaidAccountsNeedSync } from "./plaid/stale";
 import { applyCategoryRule, applyNameToSimilar, merchantKey } from "./rules";
 import type {
   Account,
+  BenefitRedemptionStatus,
   CardBenefit,
   Category,
   CategoryRule,
@@ -96,6 +97,7 @@ type FinanceContextValue = {
     transactionId: string | null;
     amount: number | null;
     notes: string;
+    status?: BenefitRedemptionStatus;
   }) => void;
   unmarkBenefit: (benefitId: string, periodStart: string) => void;
   setTransactionBenefit: (
