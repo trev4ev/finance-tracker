@@ -9,6 +9,7 @@ import { Fab } from "@/components/Fab";
 import { MonthSwitcher } from "@/components/MonthSwitcher";
 import { SegmentedControl } from "@/components/SegmentedControl";
 import { StatCard } from "@/components/StatCard";
+import { TopTransactions } from "@/components/TopTransactions";
 import { TransactionModal } from "@/components/TransactionModal";
 import { TransactionRow } from "@/components/TransactionRow";
 import {
@@ -28,6 +29,7 @@ import {
   netWorth,
   sortTransactions,
   spendingByCategory,
+  topTransactionsForMonth,
 } from "@/lib/finance";
 import { suggestedBenefitName } from "@/lib/benefit-match";
 import { transactionBenefitName } from "@/lib/benefits";
@@ -86,6 +88,10 @@ export default function OverviewPage() {
   const recent = useMemo(
     () => sortTransactions(state.transactions).slice(0, 6),
     [state.transactions],
+  );
+  const topThisMonth = useMemo(
+    () => topTransactionsForMonth(state.transactions, month),
+    [month, state.transactions],
   );
   const accounts = useMemo(
     () =>
@@ -210,6 +216,13 @@ export default function OverviewPage() {
           <CashFlowChart key={`${cashFlowView}-${month}`} series={cashflow} />
         </div>
       </section>
+
+      <TopTransactions
+        month={month}
+        transactions={topThisMonth}
+        state={state}
+        onSelect={setEditing}
+      />
 
       <section className="lg:hidden">
         <div className="mb-3 flex items-center justify-between">

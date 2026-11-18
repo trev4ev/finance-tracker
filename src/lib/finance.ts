@@ -430,6 +430,20 @@ export function spendingByCategory(
     .sort((a, b) => b.amount - a.amount);
 }
 
+/** Largest expenses in a month, then newest on ties. */
+export function topTransactionsForMonth(
+  transactions: Transaction[],
+  month: string,
+): Transaction[] {
+  return transactions
+    .filter((tx) => inMonth(tx, month) && tx.type === "expense")
+    .sort((a, b) => {
+      if (a.amount !== b.amount) return b.amount - a.amount;
+      if (a.date !== b.date) return b.date.localeCompare(a.date);
+      return b.id.localeCompare(a.id);
+    });
+}
+
 /** What actually moved in the account (bank charge), even if spending was split. */
 export function cashAmount(tx: Transaction): number {
   return tx.originalAmount ?? tx.amount;
