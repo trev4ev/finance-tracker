@@ -53,7 +53,7 @@ function unusedOnAccount(
   return state.cardBenefits.filter((benefit) => {
     if (benefit.accountId !== accountId || !benefit.active) return false;
     if (catalogMatchersForName(benefit.name).length === 0) return false;
-    return !benefitStatus(benefit, redemptions, asOf).used;
+    return benefitStatus(benefit, redemptions, asOf).usage === "available";
   });
 }
 

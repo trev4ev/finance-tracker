@@ -2,6 +2,7 @@ import { addMonths, monthLabel, shortMonthLabel, todayISO } from "./dates";
 import type {
   BenefitFrequency,
   BenefitRedemption,
+  BenefitRedemptionStatus,
   CardBenefit,
   FinanceState,
   Transaction,
@@ -96,14 +97,39 @@ export function frequencyLabel(frequency: BenefitFrequency): string {
   return "Yearly";
 }
 
+export type BenefitUsage = "available" | "in_progress" | "used";
+
 export type BenefitStatus = {
   benefit: CardBenefit;
   periodStart: string;
   periodLabel: string;
+  usage: BenefitUsage;
+  /** True when the period is in progress or used (not available). */
   used: boolean;
   redemptions: BenefitRedemption[];
   redeemedAmount: number;
 };
+
+export function redemptionStatus(
+  row: Pick<BenefitRedemption, "status"> | undefined,
+): BenefitRedemptionStatus {
+  return row?.status === "in_progress" ? "in_progress" : "used";
+}
+
+export function periodUsage(redemptions: BenefitRedemption[]): BenefitUsage {
+  if (redemptions.length === 0) return "available";
+  if (redemptions.some((row) => redemptionStatus(row) === "used")) return "used";
+  return "in_progress";
+}
+
+function statusForLinkedTransaction(
+  tx: Transaction,
+  previous: BenefitRedemption | undefined,
+): BenefitRedemptionStatus {
+  if (tx.type === "income") return "used";
+  if (previous && redemptionStatus(previous) === "used") return "used";
+  return "in_progress";
+}
 
 export function benefitStatus(
   benefit: CardBenefit,
@@ -118,11 +144,13 @@ export function benefitStatus(
   const periodRedemptions = redemptions.filter(
     (row) => row.benefitId === benefit.id && row.periodStart === periodStart,
   );
+  const usage = periodUsage(periodRedemptions);
   return {
     benefit,
     periodStart,
     periodLabel: benefitPeriodLabel(benefit.frequency, periodStart),
-    used: periodRedemptions.length > 0,
+    usage,
+    used: usage !== "available",
     redemptions: periodRedemptions,
     redeemedAmount: periodRedemptions.reduce(
       (sum, row) => sum + (row.amount ?? 0),
@@ -168,12 +196,16 @@ export function benefitsForAccount(
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function candidateCreditTransactions(
+export function candidateBenefitTransactions(
   state: FinanceState,
   benefit: CardBenefit,
-  options?: { includeTransactionId?: string | null },
+  options?: {
+    includeTransactionId?: string | null;
+    types?: Transaction["type"][];
+  },
 ): Transaction[] {
   const keepId = options?.includeTransactionId ?? null;
+  const types = new Set(options?.types ?? ["income"]);
   const linkedElsewhere = new Set(
     state.benefitRedemptions
       .filter(
@@ -187,13 +219,24 @@ export function candidateCreditTransactions(
   return [...state.transactions]
     .filter((tx) => {
       if (tx.pending) return false;
-      if (tx.type !== "income") return false;
+      if (!types.has(tx.type) && tx.id !== keepId) return false;
       if (tx.accountId !== benefit.accountId) return false;
       if (linkedElsewhere.has(tx.id) && tx.id !== keepId) return false;
       return true;
     })
     .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id))
     .slice(0, 50);
+}
+
+export function candidateCreditTransactions(
+  state: FinanceState,
+  benefit: CardBenefit,
+  options?: { includeTransactionId?: string | null },
+): Transaction[] {
+  return candidateBenefitTransactions(state, benefit, {
+    ...options,
+    types: ["income"],
+  });
 }
 
 export function transactionBenefitName(
@@ -259,6 +302,7 @@ export function linkTransactionBenefit(
       periodStart,
       usedOn: tx.date,
       amount: tx.amount,
+      status: statusForLinkedTransaction(tx, current),
     };
     const redemptions = previous.map((row) =>
       row.id === current.id ? upsert : row,
@@ -279,6 +323,7 @@ export function linkTransactionBenefit(
       transactionId,
       usedOn: tx.date,
       amount: tx.amount,
+      status: statusForLinkedTransaction(tx, attach),
     };
     redemptions = redemptions.map((row) => (row.id === attach.id ? upsert : row));
     return {
@@ -296,6 +341,7 @@ export function linkTransactionBenefit(
     transactionId,
     amount: tx.amount,
     notes: "",
+    status: statusForLinkedTransaction(tx, undefined),
   };
   redemptions = [...redemptions, upsert];
   return {
@@ -313,6 +359,7 @@ export function upsertPeriodRedemption(
     transactionId: string | null;
     amount: number | null;
     notes: string;
+    status?: BenefitRedemptionStatus;
   },
 ): RedemptionPatch {
   const previous = state.benefitRedemptions;
@@ -345,6 +392,7 @@ export function upsertPeriodRedemption(
         transactionId: input.transactionId,
         amount: input.amount,
         notes: input.notes,
+        status: input.status ?? redemptionStatus(existing),
       }
     : {
         id: crypto.randomUUID(),
@@ -354,6 +402,7 @@ export function upsertPeriodRedemption(
         transactionId: input.transactionId,
         amount: input.amount,
         notes: input.notes,
+        status: input.status ?? "used",
       };
 
   redemptions = existing

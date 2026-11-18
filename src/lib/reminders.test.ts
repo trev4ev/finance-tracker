@@ -77,8 +77,31 @@ const stubhub = benefit({
     transactionId: null,
     amount: 10,
     notes: "",
+    status: "used",
   };
   const unused = unusedExpiringBenefits([monthly, lyft], [used], "2026-10-24");
+  assert.deepEqual(
+    unused.map((row) => row.benefit.id),
+    [lyft.id],
+  );
+}
+
+{
+  const inProgress: BenefitRedemption = {
+    id: "red-progress",
+    benefitId: monthly.id,
+    periodStart: "2026-10",
+    usedOn: "2026-10-02",
+    transactionId: null,
+    amount: 10,
+    notes: "",
+    status: "in_progress",
+  };
+  const unused = unusedExpiringBenefits(
+    [monthly, lyft],
+    [inProgress],
+    "2026-10-24",
+  );
   assert.deepEqual(
     unused.map((row) => row.benefit.id),
     [lyft.id],

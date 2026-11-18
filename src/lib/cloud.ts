@@ -268,6 +268,7 @@ export function benefitRedemptionToRow(
     transaction_id: row.transactionId,
     amount: row.amount,
     notes: row.notes,
+    status: row.status,
   };
 }
 
@@ -345,6 +346,7 @@ function benefitRedemptionFromRow(
     transactionId: (row.transaction_id as string | null) ?? null,
     amount: numOrNull(row.amount as number | null),
     notes: String(row.notes ?? ""),
+    status: row.status === "in_progress" ? "in_progress" : "used",
   };
 }
 

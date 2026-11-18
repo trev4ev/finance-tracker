@@ -97,6 +97,8 @@ export interface CardBenefit {
   active: boolean;
 }
 
+export type BenefitRedemptionStatus = "used" | "in_progress";
+
 export interface BenefitRedemption {
   id: string;
   benefitId: string;
@@ -106,6 +108,8 @@ export interface BenefitRedemption {
   transactionId: string | null;
   amount: number | null;
   notes: string;
+  /** `in_progress`: purchase made, statement credit has not posted yet. */
+  status: BenefitRedemptionStatus;
 }
 
 export interface PlaidItem {

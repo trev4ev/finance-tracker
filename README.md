@@ -14,7 +14,7 @@ Supabase Edge Functions.
 - Merchant recategorization rules (“apply to similar” and future Plaid matches)
 - Review inbox for posted spend and income until you mark them reviewed (transfers skip the queue; refresh does not clear it)
 - Accounts (checking, savings, credit, cash, investment, loan) with live balances
-- Credit card benefits (monthly, semiannual, and annual credits) with optional transaction links
+- Credit card benefits (monthly, semiannual, and annual credits) with optional transaction links, including an in-progress state while waiting for a statement credit to post
 - Suggested benefit matches from merchant names (confirm to link; viewing never auto-links)
 - Optional unused-credit email a week before month-end (Resend free tier)
 - CSV import/export

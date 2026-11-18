@@ -2,13 +2,14 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { Check, Pencil, Plus, Undo2 } from "lucide-react";
+import { Check, Clock, Pencil, Plus, Undo2 } from "lucide-react";
 import { NativeDateInput, NativeSelect } from "@/components/form-controls";
 import { Fab } from "@/components/Fab";
 import { Modal } from "@/components/Modal";
+import { SegmentedControl } from "@/components/SegmentedControl";
 import {
   benefitStatuses,
-  candidateCreditTransactions,
+  candidateBenefitTransactions,
   creditAccounts,
   CYCLE_MONTHS,
   frequencyLabel,
@@ -18,7 +19,11 @@ import { formatDisplayDate, todayISO } from "@/lib/dates";
 import { lookup } from "@/lib/finance";
 import { formatMoney, parseAmount } from "@/lib/money";
 import { useFinance } from "@/lib/store";
-import { BENEFIT_FREQUENCIES, type CardBenefit } from "@/lib/types";
+import {
+  BENEFIT_FREQUENCIES,
+  type BenefitRedemptionStatus,
+  type CardBenefit,
+} from "@/lib/types";
 
 export default function BenefitsPage() {
   const {
@@ -31,7 +36,10 @@ export default function BenefitsPage() {
     unmarkBenefit,
   } = useFinance();
   const [editing, setEditing] = useState<CardBenefit | "new" | null>(null);
-  const [marking, setMarking] = useState<BenefitStatus | null>(null);
+  const [marking, setMarking] = useState<{
+    status: BenefitStatus;
+    redemptionStatus: BenefitRedemptionStatus;
+  } | null>(null);
 
   const cards = useMemo(() => creditAccounts(state), [state]);
   const statuses = useMemo(
@@ -60,7 +68,8 @@ export default function BenefitsPage() {
     return accountIds
       .map((accountId) => {
         const items = (byAccount.get(accountId) ?? []).sort((a, b) => {
-          if (a.used !== b.used) return a.used ? 1 : -1;
+          const rank = { available: 0, in_progress: 1, used: 2 };
+          if (a.usage !== b.usage) return rank[a.usage] - rank[b.usage];
           return a.benefit.name.localeCompare(b.benefit.name);
         });
         return {
@@ -71,8 +80,9 @@ export default function BenefitsPage() {
       .filter((group) => group.items.length > 0);
   }, [cards, state.accounts, statuses]);
 
-  const available = statuses.filter((row) => !row.used);
-  const used = statuses.filter((row) => row.used);
+  const available = statuses.filter((row) => row.usage === "available");
+  const inProgress = statuses.filter((row) => row.usage === "in_progress");
+  const used = statuses.filter((row) => row.usage === "used");
 
   if (!hydrated) {
     return <div className="h-40 animate-pulse rounded-2xl bg-surface" />;
@@ -109,9 +119,18 @@ export default function BenefitsPage() {
             </span>
           </p>
           <p className="mt-1 text-sm text-muted">
-            {used.length === 0
+            {used.length === 0 && inProgress.length === 0
               ? "None used in the current period."
-              : `${used.length} used this period.`}
+              : [
+                  used.length > 0
+                    ? `${used.length} used this period`
+                    : null,
+                  inProgress.length > 0
+                    ? `${inProgress.length} in progress`
+                    : null,
+                ]
+                  .filter(Boolean)
+                  .join(" · ") + "."}
             {hiddenCount > 0 ? ` · ${hiddenCount} hidden` : ""}
           </p>
         </section>
@@ -143,7 +162,9 @@ export default function BenefitsPage() {
                     status={status}
                     transactionLabel={linkedTransactionLabel(state, status)}
                     onEdit={() => setEditing(status.benefit)}
-                    onMark={() => setMarking(status)}
+                    onMark={(redemptionStatus) =>
+                      setMarking({ status, redemptionStatus })
+                    }
                     onUnmark={() =>
                       unmarkBenefit(status.benefit.id, status.periodStart)
                     }
@@ -190,12 +211,13 @@ export default function BenefitsPage() {
 
       {marking ? (
         <MarkUsedModal
-          status={marking}
-          candidates={candidateCreditTransactions(state, marking.benefit)}
+          status={marking.status}
+          initialRedemptionStatus={marking.redemptionStatus}
+          state={state}
           onClose={() => setMarking(null)}
           onSave={(input) => {
             markBenefitUsed({
-              benefitId: marking.benefit.id,
+              benefitId: marking.status.benefit.id,
               ...input,
             });
             setMarking(null);
@@ -226,10 +248,16 @@ function BenefitCard({
   status: BenefitStatus;
   transactionLabel: string | null;
   onEdit: () => void;
-  onMark: () => void;
+  onMark: (redemptionStatus: BenefitRedemptionStatus) => void;
   onUnmark: () => void;
 }) {
-  const { benefit, used, periodLabel, redeemedAmount } = status;
+  const { benefit, usage, periodLabel, redeemedAmount } = status;
+  const detail =
+    redeemedAmount > 0 || transactionLabel
+      ? `${redeemedAmount > 0 ? ` · ${formatMoney(redeemedAmount)}` : ""}${
+          transactionLabel ? ` · ${transactionLabel}` : ""
+        }`
+      : "";
   return (
     <div className="rounded-2xl border border-border bg-surface p-3.5">
       <div className="flex items-start justify-between gap-3">
@@ -241,11 +269,12 @@ function BenefitCard({
               ? ` · ${formatMoney(benefit.expectedAmount)}`
               : ""}
           </p>
-          {used ? (
-            <p className="mt-1 text-xs text-income">
-              Used
-              {redeemedAmount > 0 ? ` · ${formatMoney(redeemedAmount)}` : ""}
-              {transactionLabel ? ` · ${transactionLabel}` : ""}
+          {usage === "used" ? (
+            <p className="mt-1 text-xs text-income">Used{detail}</p>
+          ) : usage === "in_progress" ? (
+            <p className="mt-1 text-xs text-amber-400">
+              In progress
+              {detail || " · waiting for the credit to post"}
             </p>
           ) : (
             <p className="mt-1 text-xs text-accent">Available</p>
@@ -260,7 +289,7 @@ function BenefitCard({
           <Pencil size={16} />
         </button>
       </div>
-      {used ? (
+      {usage === "used" ? (
         <button
           type="button"
           onClick={onUnmark}
@@ -269,15 +298,44 @@ function BenefitCard({
           <Undo2 size={14} />
           Undo
         </button>
+      ) : usage === "in_progress" ? (
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={onUnmark}
+            className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-border text-sm text-muted active:bg-surface-2"
+          >
+            <Undo2 size={14} />
+            Undo
+          </button>
+          <button
+            type="button"
+            onClick={() => onMark("used")}
+            className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-accent/15 text-sm font-medium text-accent active:bg-accent/25"
+          >
+            <Check size={14} />
+            Mark used
+          </button>
+        </div>
       ) : (
-        <button
-          type="button"
-          onClick={onMark}
-          className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-xl bg-accent/15 text-sm font-medium text-accent active:bg-accent/25"
-        >
-          <Check size={14} />
-          Mark used
-        </button>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => onMark("in_progress")}
+            className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl border border-border text-sm text-muted active:bg-surface-2"
+          >
+            <Clock size={14} />
+            In progress
+          </button>
+          <button
+            type="button"
+            onClick={() => onMark("used")}
+            className="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-xl bg-accent/15 text-sm font-medium text-accent active:bg-accent/25"
+          >
+            <Check size={14} />
+            Mark used
+          </button>
+        </div>
       )}
     </div>
   );
@@ -488,32 +546,62 @@ function BenefitModal({
 
 function MarkUsedModal({
   status,
-  candidates,
+  initialRedemptionStatus,
+  state,
   onClose,
   onSave,
 }: {
   status: BenefitStatus;
-  candidates: { id: string; date: string; description: string; amount: number }[];
+  initialRedemptionStatus: BenefitRedemptionStatus;
+  state: ReturnType<typeof useFinance>["state"];
   onClose: () => void;
   onSave: (input: {
     usedOn: string;
     transactionId: string | null;
     amount: number | null;
     notes: string;
+    status: BenefitRedemptionStatus;
   }) => void;
 }) {
-  const [transactionId, setTransactionId] = useState("");
-  const [usedOn, setUsedOn] = useState(todayISO());
-  const [amount, setAmount] = useState(
-    status.benefit.expectedAmount != null
-      ? String(status.benefit.expectedAmount)
-      : "",
+  const existing = status.redemptions[0];
+  const [redemptionStatus, setRedemptionStatus] = useState(
+    initialRedemptionStatus,
   );
-  const [notes, setNotes] = useState("");
+  const [transactionId, setTransactionId] = useState(() => {
+    const linkedId = existing?.transactionId;
+    if (!linkedId) return "";
+    const tx = lookup(state.transactions, linkedId);
+    if (initialRedemptionStatus === "in_progress") {
+      return tx?.type === "expense" ? linkedId : "";
+    }
+    return tx?.type === "income" ? linkedId : "";
+  });
+  const [usedOn, setUsedOn] = useState(existing?.usedOn ?? todayISO());
+  const [amount, setAmount] = useState(
+    existing?.amount != null
+      ? String(existing.amount)
+      : status.benefit.expectedAmount != null
+        ? String(status.benefit.expectedAmount)
+        : "",
+  );
+  const [notes, setNotes] = useState(existing?.notes ?? "");
   const [error, setError] = useState("");
 
+  const candidates = candidateBenefitTransactions(state, status.benefit, {
+    includeTransactionId: existing?.transactionId,
+    types: redemptionStatus === "in_progress" ? ["expense"] : ["income"],
+  });
+  const waiting = redemptionStatus === "in_progress";
+
   return (
-    <Modal title={`Mark ${status.benefit.name} used`} onClose={onClose}>
+    <Modal
+      title={
+        waiting
+          ? `Mark ${status.benefit.name} in progress`
+          : `Mark ${status.benefit.name} used`
+      }
+      onClose={onClose}
+    >
       <form
         className="space-y-4"
         onSubmit={(event) => {
@@ -528,13 +616,36 @@ function MarkUsedModal({
             transactionId: transactionId || null,
             amount: parsed,
             notes: notes.trim(),
+            status: redemptionStatus,
           });
         }}
       >
         <p className="text-sm text-muted">{status.periodLabel}</p>
+        <SegmentedControl
+          value={redemptionStatus}
+          onChange={(next) => {
+            setRedemptionStatus(next);
+            const allowed = next === "in_progress" ? "expense" : "income";
+            const selected = lookup(state.transactions, transactionId);
+            if (selected && selected.type !== allowed) {
+              setTransactionId("");
+            }
+          }}
+          options={[
+            { value: "in_progress", label: "In progress" },
+            { value: "used", label: "Used" },
+          ]}
+        />
+        <p className="text-sm text-muted">
+          {waiting
+            ? "Purchase made; waiting for the credit to post to your balance."
+            : "The statement credit has posted, or you are marking this period done."}
+        </p>
         {candidates.length > 0 ? (
           <div className="block text-sm">
-            <span className="mb-1 block text-muted">Linked credit</span>
+            <span className="mb-1 block text-muted">
+              {waiting ? "Linked purchase" : "Linked credit"}
+            </span>
             <NativeSelect
               value={transactionId}
               onChange={(event) => {
@@ -547,7 +658,11 @@ function MarkUsedModal({
                 }
               }}
             >
-              <option value="">None — just mark used</option>
+              <option value="">
+                {waiting
+                  ? "None — just mark in progress"
+                  : "None — just mark used"}
+              </option>
               {candidates.map((tx) => (
                 <option key={tx.id} value={tx.id}>
                   {tx.description} · {formatDisplayDate(tx.date)} ·{" "}
@@ -558,7 +673,9 @@ function MarkUsedModal({
           </div>
         ) : (
           <p className="text-sm text-muted">
-            No unused statement credits on this card. You can still mark it used.
+            {waiting
+              ? "No unused purchases on this card. You can still mark it in progress."
+              : "No unused statement credits on this card. You can still mark it used."}
           </p>
         )}
         <div className="grid grid-cols-2 gap-3">
@@ -602,7 +719,7 @@ function MarkUsedModal({
             type="submit"
             className="min-h-11 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-background"
           >
-            Mark used
+            {waiting ? "Save in progress" : "Mark used"}
           </button>
         </div>
       </form>

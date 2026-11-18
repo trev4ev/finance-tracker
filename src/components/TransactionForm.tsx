@@ -354,13 +354,15 @@ export function TransactionForm({
             This looks like{" "}
             <span className="font-medium">{suggested.name}</span>
             <span className="mt-0.5 block text-xs text-muted">
-              Link it as a redemption. Unchecked stays unlinked.
+              {form.type === "expense"
+                ? "Mark the credit in progress until it posts. Unchecked stays unlinked."
+                : "Link it as a redemption. Unchecked stays unlinked."}
             </span>
           </span>
         </label>
       ) : null}
 
-      {form.type === "income" && accountBenefits.length > 0 ? (
+      {form.type !== "transfer" && accountBenefits.length > 0 ? (
         <div className="block text-sm">
           <span className="mb-1 block text-muted">Card benefit</span>
           <NativeSelect
@@ -370,7 +372,11 @@ export function TransactionForm({
               setForm((prev) => ({ ...prev, benefitId: event.target.value }))
             }
           >
-            <option value="">Not a card benefit</option>
+            <option value="">
+              {form.type === "expense"
+                ? "Not using a card credit"
+                : "Not a card benefit"}
+            </option>
             {accountBenefits.map((benefit) => (
               <option key={benefit.id} value={benefit.id}>
                 {benefit.name}
